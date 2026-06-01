@@ -5,27 +5,32 @@ export async function syncArticleTags(articleId: string, tagNames: string[]) {
   if (tagNames.length === 0) return;
 
   await prisma.$transaction(async (tx) => {
-    const tags = await Promise.all(
-      tagNames.map((name) =>
-        tx.tag.upsert({ where: { name }, create: { name }, update: {} })
-      )
-    );
+    const tags: Array<{ id: string; name: string }> = [];
+
+    for (const name of tagNames) {
+      const tag = await tx.tag.upsert({
+        where: { name },
+        create: { name },
+        update: {},
+      });
+      tags.push(tag);
+    }
 
     await tx.tagOnArticle.deleteMany({ where: { articleId } });
 
-    await tx.tagOnArticle.createMany({
-      data: tags.map((t) => ({ articleId, tagId: t.id })),
-    });
+    if (tags.length > 0) {
+      await tx.tagOnArticle.createMany({
+        data: tags.map((t) => ({ articleId, tagId: t.id })),
+      });
+    }
 
-    await Promise.all(
-      tags.map((t) =>
-        tx.tag.update({
-          where: { id: t.id },
-          data: { count: { increment: 1 } },
-        })
-      )
-    );
-  });
+    for (const tag of tags) {
+      await tx.tag.update({
+        where: { id: tag.id },
+        data: { count: { increment: 1 } },
+      });
+    }
+  }, { timeout: 30000 });
 }
 
 export async function createArticleWithTags(
