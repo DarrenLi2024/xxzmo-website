@@ -1,3 +1,4 @@
+import React from 'react';
 import { RubyText } from '../RubyText';
 
 interface PinyinMapItem {
@@ -157,13 +158,19 @@ export function ArticleBody({ source, type, preface, body, postscript, notes, pi
       <div className={`article-poem-body font-serif text-sm md:text-base text-ink-900 leading-relaxed my-4 md:my-6 ${lineBreakMode === "plainProse" ? "plain-prose-body" : "space-y-2 md:space-y-3"} ${showPinyin ? 'pinyin-mode' : ''}`}>
         {paragraphLines.length > 0 ? (
           paragraphLines.map((lines, paraIndex) => (
-            <p key={paraIndex} className={lineBreakMode === "plainProse" ? "m-0" : "m-0 space-y-1.5 md:space-y-2"}>
-              {lines.map((line, lineIndex) => (
-                <span key={lineIndex} className={lineBreakMode === "plainProse" ? "prose-line" : "poem-line"}>
-                  <RubyText text={line.text} pinyinData={line.pinyinData} showPinyin={showPinyin} />
-                </span>
-              ))}
-            </p>
+            <React.Fragment key={paraIndex}>
+              {/* 词牌/曲牌上下阕分隔符 */}
+              {paraIndex > 0 && (type === "词" || type === "曲") && lineBreakMode === "poetry" && (
+                <span className="ci-stanza-separator" aria-hidden="true">❖</span>
+              )}
+              <p className={lineBreakMode === "plainProse" ? "m-0" : "m-0 space-y-1.5 md:space-y-2"}>
+                {lines.map((line, lineIndex) => (
+                  <span key={lineIndex} className={lineBreakMode === "plainProse" ? "prose-line" : "poem-line"}>
+                    <RubyText text={line.text} pinyinData={line.pinyinData} showPinyin={showPinyin} />
+                  </span>
+                ))}
+              </p>
+            </React.Fragment>
           ))
         ) : (
           <p className="text-ink-400">暂无内容</p>

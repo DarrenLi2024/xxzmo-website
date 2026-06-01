@@ -162,29 +162,31 @@
      中文排版
      ======================================== */
   .font-serif-cn {
-    font-family: var(--font-noto-serif-sc), 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif;
+    font-family: var(--font-noto-serif-sc), 'Noto Serif SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'STSong', 'Songti SC', 'SimSun', serif;
   }
 
   .font-kai-cn {
-    font-family: var(--font-noto-serif-sc), 'STKaiti', 'KaiTi', 'Kaiti SC', serif;
+    font-family: var(--font-noto-serif-sc), 'STKaiti', 'KaiTi', 'Kaiti SC', '楷体', serif;
   }
 
   .prose-cn {
-    font-family: var(--font-noto-serif-sc), 'Songti SC', 'SimSun', 'STSong', serif;
+    font-family: var(--font-noto-serif-sc), 'Noto Serif SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', 'STSong', serif;
     color: var(--color-ink-700);
     text-align: justify;
-    text-justify: inter-character;
+    text-justify: inter-ideograph;
     line-break: strict;
-    word-break: normal;
+    word-break: keep-all;
     overflow-wrap: break-word;
-    hanging-punctuation: allow-end;
-    letter-spacing: 0.03em;
-    line-height: 1.8;
+    hanging-punctuation: force-end allow-end;
+    letter-spacing: 0.025em;
+    line-height: 1.85;
+    text-spacing: normal;
+    text-autospace: normal;
   }
 
   .prose-cn p {
-    text-indent: 2em;
-    margin: 0 0 0.5em;
+    text-indent: 2em hanging;
+    margin: 0 0 0.6em;
   }
 
   .prose-cn p:last-child {
@@ -192,7 +194,7 @@
   }
 
   .preface-block {
-    font-family: var(--font-noto-serif-sc), 'Songti SC', 'SimSun', 'STSong', serif;
+    font-family: var(--font-noto-serif-sc), 'Noto Serif SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'STSong', 'Songti SC', 'SimSun', serif;
     font-size: 0.875rem;
     color: var(--muted-foreground);
     line-height: 1.7;
@@ -204,7 +206,7 @@
   }
 
   .preface-block p {
-    text-indent: 2em;
+    text-indent: 2em hanging;
     margin: 0 0 0.3em;
   }
 
@@ -223,7 +225,7 @@
   }
 
   .notes-block p {
-    text-indent: 2em;
+    text-indent: 2em hanging;
     margin: 0 0 0.3em;
   }
 
@@ -234,7 +236,6 @@
   .notes-block::before {
     content: '※ ';
     color: var(--color-accent);
-    font-weight: 500;
   }
 
   /* ========================================
@@ -463,6 +464,18 @@
   ruby-position: over;
   ruby-align: space-between;
   vertical-align: baseline;
+  /* 逐字注音分离模式 */
+  ruby-merge: separate;
+}
+
+/* 拼音模式下诗歌行 ruby 对不跨行 */
+.pinyin-mode .poem-line .ruby-container ruby {
+  white-space: nowrap;
+}
+
+/* 拼音模式下散文 ruby 分页保护 */
+.pinyin-mode .prose-line .ruby-container ruby {
+  break-inside: avoid;
 }
 
 .ruby-container rt {
@@ -487,6 +500,12 @@
 
 .article-poem-body {
   text-wrap: pretty;
+  /* 诗歌排版: 居中排列 + 行独立 */
+  text-align: center;
+}
+
+.article-poem-body p {
+  text-align: center;
 }
 
 .poem-line {
@@ -496,6 +515,20 @@
   overflow-x: auto;
   scrollbar-width: none;
   padding-inline: 0.1em;
+  /* 诗歌行内字距略松 */
+  letter-spacing: 0.04em;
+  line-height: 1.75;
+}
+
+/* 词牌上下阕分隔 */
+.ci-stanza-separator {
+  display: block;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-ink-300);
+  letter-spacing: 0.5em;
+  margin: 0.3em 0;
+  user-select: none;
 }
 
 .poem-line::-webkit-scrollbar {
@@ -505,18 +538,18 @@
 .plain-prose-body {
   text-wrap: wrap;
   text-align: justify;
-  text-justify: inter-character;
+  text-justify: inter-ideograph;
   line-break: strict;
-  word-break: normal;
+  word-break: keep-all;
   overflow-wrap: break-word;
-  hanging-punctuation: allow-end;
+  hanging-punctuation: force-end allow-end;
+  letter-spacing: 0.025em;
 }
 
 .plain-prose-body p {
-  text-indent: 2em;
-  letter-spacing: 0.03em;
-  line-height: 1.8;
-  margin: 0 0 0.5em;
+  text-indent: 2em hanging;
+  line-height: 1.85;
+  margin: 0 0 0.6em;
 }
 
 .plain-prose-body p:last-child {
@@ -531,17 +564,19 @@
 
 .indented-text {
   text-align: justify;
-  text-justify: inter-character;
-  line-height: 1.8;
+  text-justify: inter-ideograph;
+  line-height: 1.85;
   letter-spacing: 0.03em;
   line-break: strict;
-  word-break: normal;
-  hanging-punctuation: allow-end;
+  word-break: keep-all;
+  hanging-punctuation: force-end allow-end;
+  text-spacing: normal;
+  text-autospace: normal;
 }
 
 .indented-text p {
-  text-indent: 2em;
-  margin: 0 0 0.5em;
+  text-indent: 2em hanging;
+  margin: 0 0 0.6em;
 }
 
 .indented-text p:last-child {
@@ -549,10 +584,10 @@
 }
 
 .annotation-item {
-  text-indent: 2em;
-  line-height: 1.8;
+  text-indent: 2em hanging;
+  line-height: 1.85;
   letter-spacing: 0.03em;
-  margin-bottom: 0.5em;
+  margin-bottom: 0.6em;
 }
 
 .annotation-explanation {
@@ -560,16 +595,17 @@
 }
 
 .plain-prose-body.pinyin-mode {
-  text-align: left;
+  text-align: justify;
+  text-justify: inter-ideograph;
   overflow-wrap: normal;
-  word-break: normal;
+  word-break: keep-all;
+  letter-spacing: 0.02em;
 }
 
 .plain-prose-body.pinyin-mode p {
-  line-height: 2.3;
-  text-align: left;
-  text-justify: auto;
-  letter-spacing: 0;
+  line-height: 2.5;
+  text-indent: 2em hanging;
+  margin-bottom: 0.6em;
 }
 
 .plain-prose-body.pinyin-mode .prose-line {
@@ -584,12 +620,39 @@
   .pinyin-mode {
     line-height: 2.1;
   }
+
+  .article-poem-body,
+  .article-poem-body p {
+    text-align: center;
+  }
 }
 
 /* 平板适配 */
 @media (min-width: 641px) and (max-width: 1024px) {
   .ruby-container rt {
     font-size: 0.46em;
+  }
+
+  .article-poem-body,
+  .article-poem-body p {
+    text-align: center;
+  }
+}
+
+/*
+ * 中英混排降级策略 (不支持 text-spacing 的浏览器)
+ */
+@supports not (text-spacing: normal) {
+  .prose-cn,
+  .plain-prose-body,
+  .indented-text {
+    letter-spacing: 0.05em;
+  }
+
+  .prose-cn p,
+  .plain-prose-body p,
+  .indented-text p {
+    word-spacing: 0.15em;
   }
 }
 
@@ -721,15 +784,16 @@
 
   .article-poem-body.pinyin-mode {
     line-height: 2.25 !important;
+    text-align: center !important;
   }
 
   .plain-prose-body.pinyin-mode {
-    text-align: left !important;
+    text-align: justify !important;
   }
 
   .plain-prose-body.pinyin-mode p {
-    line-height: 2.2 !important;
-    text-indent: 2em;
+    line-height: 2.4 !important;
+    text-indent: 2em hanging;
   }
 
   .plain-prose-body.pinyin-mode .prose-line {
@@ -755,11 +819,11 @@
   .plain-prose-body {
     text-align: justify;
     line-height: 1.7 !important;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.025em;
   }
 
   .plain-prose-body p {
-    text-indent: 2em;
+    text-indent: 2em hanging;
     margin: 0 0 0.4em;
   }
 
@@ -770,7 +834,7 @@
   }
 
   .indented-text p {
-    text-indent: 2em;
+    text-indent: 2em hanging;
     margin: 0 0 0.4em;
   }
 
@@ -783,7 +847,7 @@
   }
 
   .preface-block p {
-    text-indent: 2em;
+    text-indent: 2em hanging;
   }
 
   .notes-block {
@@ -791,7 +855,7 @@
   }
 
   .notes-block p {
-    text-indent: 2em;
+    text-indent: 2em hanging;
   }
 
   .ruby-container rt {
@@ -826,6 +890,6 @@
 
   .pdf-print-section .indented-text p {
     margin: 0 0 2.5mm;
-    text-indent: 2em;
+    text-indent: 2em hanging;
   }
 }

@@ -137,6 +137,9 @@ export function ArticleDetail({
       const converter = await loadConverter(nextMode);
       setScriptConverter(() => converter);
       setScriptMode(nextMode);
+      // 更新页面 lang 属性以匹配当前字形模式
+      const langVal = nextMode === "traditional" ? "zh-Hant" : "zh-Hans";
+      document.documentElement.setAttribute("lang", langVal);
     } finally {
       setIsScriptConverting(false);
     }
@@ -145,12 +148,14 @@ export function ArticleDetail({
   return (
     <>
       <header className="mb-8 border-b border-ink-900 pb-4">
-        <h1 className="text-2xl md:text-3xl font-serif text-ink-900 font-medium tracking-wide mb-2">
-          {visibleTitle}
-        </h1>
-        {visibleSubtitle && (
-          <p className="text-lg font-kai text-ink-500 mb-2">{visibleSubtitle}</p>
-        )}
+        <hgroup>
+          <h1 className="text-2xl md:text-3xl font-serif text-ink-900 font-medium tracking-wide mb-2">
+            {visibleTitle}
+          </h1>
+          {visibleSubtitle && (
+            <p role="doc-subtitle" className="text-lg font-kai text-ink-500 mb-2">{visibleSubtitle}</p>
+          )}
+        </hgroup>
         <ArticleMeta
           type={visibleType}
           author={visibleAuthor}
@@ -168,6 +173,7 @@ export function ArticleDetail({
       <div className="flex items-center gap-3 mt-6 pt-6 border-t border-paper-200">
         {hasPinyin && (
           <button onClick={() => setShowPinyin(!showPinyin)}
+            aria-pressed={showPinyin}
             className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
               showPinyin ? "border-accent/40 bg-accent/10 text-accent" : "border-paper-200 text-ink-500 hover:bg-paper-100"}`}>
             {showPinyin ? "隐藏拼音" : "显示拼音"}

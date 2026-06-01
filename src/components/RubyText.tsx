@@ -27,7 +27,7 @@ export function RubyText({ text, pinyinData, showPinyin = true, className = '' }
         return (
           <ruby key={index}>
             {char}
-            <rt>{py || '\u00a0'}</rt>
+            <rt lang="zh-Latn">{py || '\u00a0'}</rt>
           </ruby>
         );
       })}
