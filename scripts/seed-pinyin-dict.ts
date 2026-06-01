@@ -1,0 +1,272 @@
+/**
+ * 古汉语通假字/异读/专名 拼音词典 seed 脚本
+ * 覆盖：通假字、古地名、人名、官名、典故成语
+ *
+ * 运行：npx tsx scripts/seed-pinyin-dict.ts
+ */
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+// ============================================================
+// 全量词典 (~200条)
+// phrase -> { pinyin, category, source }
+// ============================================================
+const DICT: Record<string, { pinyin: string; category: string; source?: string }> = {
+  // ─── 通假字 / 异读（高频） ───
+  "说":  { pinyin: "shuì", category: "通假字", source: "通'悦'或劝说义" },
+  "不亦说乎": { pinyin: "bù yì yuè hū", category: "通假字", source: "《论语·学而》" },
+  "秦王不说": { pinyin: "qín wáng bù yuè", category: "通假字", source: "通'悦'" },
+  "见":  { pinyin: "xiàn", category: "通假字", source: "通'现'" },
+  "风吹草低见牛羊": { pinyin: "fēng chuī cǎo dī xiàn niú yáng", category: "通假字", source: "《敕勒歌》" },
+  "何时眼前突兀见此屋": { pinyin: "hé shí yǎn qián tū wù xiàn cǐ wū", category: "通假字", source: "杜甫《茅屋为秋风所破歌》" },
+  "被":  { pinyin: "pī", category: "通假字", source: "通'披'" },
+  "被发文身": { pinyin: "pī fà wén shēn", category: "通假字" },
+  "将军身被坚执锐": { pinyin: "jiāng jūn shēn pī jiān zhí ruì", category: "通假字", source: "《史记·陈涉世家》" },
+  "女":  { pinyin: "rǔ", category: "通假字", source: "通'汝'" },
+  "三岁贯女": { pinyin: "sān suì guàn rǔ", category: "通假字", source: "《诗经·硕鼠》" },
+  "知":  { pinyin: "zhì", category: "通假字", source: "通'智'" },
+  "知之为知之": { pinyin: "zhī zhī wéi zhī zhī", category: "通假字" },
+  "则知明而行无过矣": { pinyin: "zé zhì míng ér xíng wú guò yǐ", category: "通假字", source: "《荀子·劝学》" },
+  "共":  { pinyin: "gōng", category: "通假字", source: "通'供'" },
+  "行李之往来共其乏困": { pinyin: "xíng lǐ zhī wǎng lái gōng qí fá kùn", category: "通假字", source: "《左传·烛之武退秦师》" },
+  "阙":  { pinyin: "quē", category: "通假字", source: "通'缺'" },
+  "两岸连山略无阙处": { pinyin: "liǎng àn lián shān lüè wú quē chù", category: "通假字", source: "《水经注·三峡》" },
+  "县":  { pinyin: "xuán", category: "通假字", source: "通'悬'" },
+  "不狩不猎胡瞻尔庭有县獾兮": { pinyin: "bù shòu bù liè hú zhān ěr tíng yǒu xuán huān xī", category: "通假字", source: "《诗经·伐檀》" },
+  "君子生非异也": { pinyin: "jūn zǐ xìng fēi yì yě", category: "通假字", source: "生通'性'，《荀子·劝学》" },
+  "虽有槁暴": { pinyin: "suī yòu gǎo pù", category: "通假字", source: "有通'又'，暴通'曝'，《荀子·劝学》" },
+  "山川相缪": { pinyin: "shān chuān xiāng liáo", category: "通假字", source: "缪通'缭'，《赤壁赋》" },
+  "举酒属客": { pinyin: "jǔ jiǔ zhǔ kè", category: "通假字", source: "属通'嘱'，《赤壁赋》" },
+  "趣":  { pinyin: "qǔ", category: "通假字", source: "通'趋/取'" },
+  "虽趣舍万殊": { pinyin: "suī qǔ shě wàn shū", category: "通假字", source: "《兰亭集序》" },
+  "取":  { pinyin: "qǔ", category: "通假字", source: "通'娶'" },
+  "终老不复取": { pinyin: "zhōng lǎo bù fù qǔ", category: "通假字", source: "《孔雀东南飞》" },
+  "匪":  { pinyin: "fēi", category: "通假字", source: "通'非'" },
+  "匪来贸丝": { pinyin: "fēi lái mào sī", category: "通假字", source: "《诗经·氓》" },
+  "于":  { pinyin: "xū", category: "通假字", source: "通'吁'" },
+  "于嗟鸠兮": { pinyin: "xū jiē jiū xī", category: "通假字", source: "《诗经·氓》" },
+  "无反": { pinyin: "wú fǎn", category: "通假字", source: "反通'返'" },
+  "反": { pinyin: "fǎn", category: "通假字", source: "通'返'" },
+  "秦王必说见臣": { pinyin: "qín wáng bì yuè jiàn chén", category: "通假字", source: "说通'悦'，《荆轲刺秦王》" },
+  "秦王还柱而走": { pinyin: "qín wáng huán zhù ér zǒu", category: "通假字", source: "还通'环'，《荆轲刺秦王》" },
+  "卒起不意": { pinyin: "cù qǐ bù yì", category: "通假字", source: "卒通'猝'，《荆轲刺秦王》" },
+  "燕王诚振怖": { pinyin: "yān wáng chéng zhèn bù", category: "通假字", source: "振通'震'，《荆轲刺秦王》" },
+  "拜送书于庭": { pinyin: "bài sòng shū yú tíng", category: "通假字", source: "庭通'廷'，《廉颇蔺相如列传》" },
+  "召有司案图": { pinyin: "zhào yǒu sī àn tú", category: "通假字", source: "案通'按'，《廉颇蔺相如列传》" },
+  "唯大王与群臣孰计议之": { pinyin: "wéi dà wáng yǔ qún chén shú jì yì zhī", category: "通假字", source: "孰通'熟'" },
+  "因击沛公于坐": { pinyin: "yīn jī pèi gōng yú zuò", category: "通假字", source: "坐通'座'，《鸿门宴》" },
+  "距关毋内诸侯": { pinyin: "jù guān wú nà zhū hóu", category: "通假字", source: "内通'纳'，《鸿门宴》" },
+  "张良出要项伯": { pinyin: "zhāng liáng chū yāo xiàng bó", category: "通假字", source: "要通'邀'，《鸿门宴》" },
+  "旦日不可不蚤自来谢项王": { pinyin: "dàn rì bù kě bù zǎo zì lái xiè xiàng wáng", category: "通假字", source: "蚤通'早'" },
+  "令将军与臣有郤": { pinyin: "lìng jiāng jūn yǔ chén yǒu xì", category: "通假字", source: "郤通'隙'，《鸿门宴》" },
+  "翼":  { pinyin: "yì", category: "通假字", source: "通'翌'，明日" },
+  "有":  { pinyin: "yòu", category: "通假字", source: "通'又'" },
+  "裁":  { pinyin: "cái", category: "通假字", source: "通'才'" },
+
+  // ─── 词类活用导致的异读 ───
+  "王天下": { pinyin: "wàng tiān xià", category: "异读", source: "王读 wàng，称王" },
+  "衣":  { pinyin: "yì", category: "异读", source: "名词作动词'穿衣'读去声" },
+  "食":  { pinyin: "sì", category: "异读", source: "使动'喂养'" },
+  "饮":  { pinyin: "yìn", category: "异读", source: "使动'给…喝'" },
+  "语":  { pinyin: "yù", category: "异读", source: "告诉" },
+
+  // ─── 多音字（高频易错） ───
+  "遗":  { pinyin: "wèi", category: "多音字", source: "赠送" },
+  "是以先帝简拔以遗陛下": { pinyin: "shì yǐ xiān dì jiǎn bá yǐ wèi bì xià", category: "多音字", source: "《出师表》" },
+  "度":  { pinyin: "duó", category: "多音字", source: "揣度/测量" },
+  "相如度秦王虽斋": { pinyin: "xiàng rú duó qín wáng suī zhāi", category: "多音字", source: "《廉颇蔺相如列传》" },
+  "数":  { pinyin: "shuò", category: "多音字", source: "屡次" },
+  "数见不鲜": { pinyin: "shuò jiàn bù xiān", category: "多音字" },
+  "数罟不入洿池": { pinyin: "cù gǔ bù rù wū chí", category: "多音字", source: "数读 cù，密，《孟子》" },
+  "数口之家": { pinyin: "shù kǒu zhī jiā", category: "多音字", source: "数读 shù，几" },
+  "更":  { pinyin: "gēng", category: "多音字", source: "改变/经历" },
+  "少":  { pinyin: "shào", category: "多音字", source: "年少" },
+  "长":  { pinyin: "zhǎng", category: "多音字", source: "生长/年长" },
+  "好":  { pinyin: "hào", category: "多音字", source: "喜好" },
+  "为":  { pinyin: "wèi", category: "多音字", source: "为了/替" },
+  "与":  { pinyin: "yù", category: "多音字", source: "参与" },
+  "胜":  { pinyin: "shēng", category: "多音字", source: "禁得住" },
+  "不违农时谷不可胜食也": { pinyin: "bù wéi nóng shí gǔ bù kě shēng shí yě", category: "多音字", source: "《孟子》" },
+  "乘":  { pinyin: "shèng", category: "多音字", source: "古量词，车辆，四" },
+  "千乘之国": { pinyin: "qiān shèng zhī guó", category: "多音字", source: "《论语》" },
+  "参":  { pinyin: "cān", category: "多音字", source: "参与" },
+  "差":  { pinyin: "cī", category: "多音字", source: "参差 cēn cī" },
+  "参差": { pinyin: "cēn cī", category: "多音字" },
+  "期":  { pinyin: "jī", category: "多音字", source: "一整年/一周" },
+  "期年之后": { pinyin: "jī nián zhī hòu", category: "多音字", source: "《邹忌讽齐王纳谏》" },
+
+  // ─── 古地名 ───
+  "会稽": { pinyin: "kuài jī", category: "古地名", source: "今浙江绍兴" },
+  "番禺": { pinyin: "pān yú", category: "古地名", source: "今广州" },
+  "大宛": { pinyin: "dà yuān", category: "古地名", source: "西域古国" },
+  "龟兹": { pinyin: "qiū cí", category: "古地名", source: "西域古国，今新疆库车" },
+  "身毒": { pinyin: "yuān dú", category: "古地名", source: "古印度" },
+  "月氏": { pinyin: "yuè zhī", category: "古地名", source: "西域古族" },
+  "大月氏": { pinyin: "dà yuè zhī", category: "古地名" },
+  "康居": { pinyin: "kāng qú", category: "古地名", source: "西域古国" },
+  "高句丽": { pinyin: "gāo gōu lí", category: "古地名", source: "朝鲜古国" },
+  "吐谷浑": { pinyin: "tǔ yù hún", category: "古地名", source: "鲜卑古族" },
+  "先零": { pinyin: "xiān lián", category: "古地名", source: "汉代羌族部落" },
+  "朱提": { pinyin: "shū shí", category: "古地名", source: "古县名，今云南昭通" },
+  "芒砀山": { pinyin: "máng dàng shān", category: "古地名" },
+  "荥阳": { pinyin: "xíng yáng", category: "古地名" },
+  "并州": { pinyin: "bīng zhōu", category: "古地名", source: "古九州之一" },
+  "东莞": { pinyin: "dōng guǎn", category: "古地名", source: "古郡名，非今东莞" },
+  "泷水": { pinyin: "shuāng shuǐ", category: "古地名" },
+  "枞阳": { pinyin: "zōng yáng", category: "古地名" },
+  "洪洞": { pinyin: "hóng tóng", category: "古地名" },
+  "六安": { pinyin: "lù ān", category: "古地名" },
+  "铅山": { pinyin: "yán shān", category: "古地名" },
+  "阌乡": { pinyin: "wén xiāng", category: "古地名" },
+  "郯城": { pinyin: "tán chéng", category: "古地名" },
+  "漯河": { pinyin: "tà hé", category: "古地名", source: "古称，今漯 luò 河" },
+  "渑池": { pinyin: "miǎn chí", category: "古地名", source: "蔺相如会秦王处" },
+  "朝歌": { pinyin: "zhāo gē", category: "古地名", source: "商朝都城" },
+  "镐京": { pinyin: "hào jīng", category: "古地名", source: "西周都城" },
+  "郢都": { pinyin: "yǐng dū", category: "古地名", source: "楚国都城" },
+  "邺城": { pinyin: "yè chéng", category: "古地名" },
+  "涪陵": { pinyin: "fú líng", category: "古地名" },
+  "夔州": { pinyin: "kuí zhōu", category: "古地名" },
+  "彭蠡": { pinyin: "péng lǐ", category: "古地名", source: "今鄱阳湖" },
+  "云梦泽": { pinyin: "yún mèng zé", category: "古地名" },
+  "崤山": { pinyin: "xiáo shān", category: "古地名" },
+  "函谷关": { pinyin: "hán gǔ guān", category: "古地名" },
+  "汨罗": { pinyin: "mì luó", category: "古地名" },
+  "会稽山": { pinyin: "kuài jī shān", category: "古地名" },
+  "亳州": { pinyin: "bó zhōu", category: "古地名" },
+  "歙县": { pinyin: "shè xiàn", category: "古地名" },
+  "盱眙": { pinyin: "xū yí", category: "古地名" },
+  "邗沟": { pinyin: "hán gōu", category: "古地名", source: "古运河" },
+  "岘山": { pinyin: "xiàn shān", category: "古地名" },
+
+  // ─── 人名 / 姓氏 ───
+  "郦食其": { pinyin: "lì yì jī", category: "人名" },
+  "金日磾": { pinyin: "jīn mì dī", category: "人名", source: "西汉大臣" },
+  "尉迟": { pinyin: "yù chí", category: "姓氏" },
+  "万俟": { pinyin: "mò qí", category: "姓氏" },
+  "皋陶": { pinyin: "gāo yáo", category: "人名", source: "上古圣贤" },
+  "契":  { pinyin: "xiè", category: "人名", source: "商朝始祖" },
+  "傅说": { pinyin: "fù yuè", category: "人名", source: "商朝贤相" },
+  "樊於期": { pinyin: "fán wū jī", category: "人名", source: "《荆轲刺秦王》" },
+  "伍员": { pinyin: "wǔ yún", category: "人名", source: "即伍子胥" },
+  "颛顼": { pinyin: "zhuān xū", category: "人名", source: "五帝之一" },
+  "帝喾": { pinyin: "dì kù", category: "人名", source: "五帝之一" },
+  "妲己": { pinyin: "dá jǐ", category: "人名" },
+  "褒姒": { pinyin: "bāo sì", category: "人名" },
+  "嫪毐": { pinyin: "lào ǎi", category: "人名" },
+  "曹刿": { pinyin: "cáo guì", category: "人名" },
+  "墨翟": { pinyin: "mò dí", category: "人名", source: "即墨子" },
+  "禽滑厘": { pinyin: "qín gǔ lí", category: "人名", source: "墨子弟子" },
+  "李阳冰": { pinyin: "lǐ yáng níng", category: "人名", source: "唐代书法家" },
+  "冒顿": { pinyin: "mò dú", category: "人名", source: "匈奴单于" },
+  "呼韩邪": { pinyin: "hū hán yé", category: "人名", source: "匈奴单于" },
+  "高渐离": { pinyin: "gāo jiàn lí", category: "人名" },
+  "尉缭": { pinyin: "yù liáo", category: "人名" },
+  "范蠡": { pinyin: "fàn lǐ", category: "人名" },
+  "种":  { pinyin: "chóng", category: "姓氏" },
+  "盖":  { pinyin: "gě", category: "姓氏" },
+  "任":  { pinyin: "rén", category: "姓氏" },
+  "解":  { pinyin: "xiè", category: "姓氏" },
+  "朴":  { pinyin: "piáo", category: "姓氏" },
+  "仇":  { pinyin: "qiú", category: "姓氏" },
+  "查":  { pinyin: "zhā", category: "姓氏" },
+  "单":  { pinyin: "shàn", category: "姓氏" },
+  "乐":  { pinyin: "yuè", category: "姓氏" },
+  "翟":  { pinyin: "zhái", category: "姓氏" },
+  "区":  { pinyin: "ōu", category: "姓氏" },
+  "能":  { pinyin: "nài", category: "姓氏" },
+  "员":  { pinyin: "yùn", category: "姓氏" },
+  "华":  { pinyin: "huà", category: "姓氏" },
+  "召公": { pinyin: "shào gōng", category: "人名", source: "周朝重臣" },
+  "祭仲": { pinyin: "zhài zhòng", category: "人名", source: "郑国大夫" },
+  "澹台": { pinyin: "tán tái", category: "复姓" },
+  "公输": { pinyin: "gōng shū", category: "复姓" },
+  "欧阳": { pinyin: "ōu yáng", category: "复姓" },
+  "令狐": { pinyin: "líng hú", category: "复姓" },
+  "鲜于": { pinyin: "xiān yú", category: "复姓" },
+  "闾丘": { pinyin: "lǘ qiū", category: "复姓" },
+  "毌丘": { pinyin: "guàn qiū", category: "复姓" },
+
+  // ─── 官名 / 制度 ───
+  "仆射": { pinyin: "pú yè", category: "官名" },
+  "洗马": { pinyin: "xiǎn mǎ", category: "官名", source: "太子洗马" },
+  "单于": { pinyin: "chán yú", category: "官名", source: "匈奴首领" },
+  "可汗": { pinyin: "kè hán", category: "官名", source: "游牧首领" },
+  "大行": { pinyin: "dà xíng", category: "官名", source: "掌宾客礼仪" },
+  "舍人": { pinyin: "shè rén", category: "官名" },
+  "郎中": { pinyin: "láng zhōng", category: "官名" },
+  "从事": { pinyin: "cóng shì", category: "官名" },
+  "司马": { pinyin: "sī mǎ", category: "官名" },
+  "司徒": { pinyin: "sī tú", category: "官名" },
+  "司空": { pinyin: "sī kōng", category: "官名" },
+  "司寇": { pinyin: "sī kòu", category: "官名" },
+  "大夫": { pinyin: "dà fū", category: "官名" },
+  "将军": { pinyin: "jiāng jūn", category: "官名" },
+  "长史": { pinyin: "zhǎng shǐ", category: "官名" },
+  "校尉": { pinyin: "xiào wèi", category: "官名" },
+  "单于庭": { pinyin: "chán yú tíng", category: "制度" },
+
+  // ─── 典故专名 / 成语 ───
+  "博闻强识": { pinyin: "bó wén qiáng zhì", category: "典故", source: "识通'志'，记" },
+  "心广体胖": { pinyin: "xīn guǎng tǐ pán", category: "典故", source: "胖读 pán，安泰" },
+  "暴虎冯河": { pinyin: "bào hǔ píng hé", category: "典故", source: "冯通'凭'，《诗经》" },
+  "余勇可贾": { pinyin: "yú yǒng kě gǔ", category: "典故" },
+  "解铃系铃": { pinyin: "jiě líng jì líng", category: "典故", source: "系读 jì" },
+  "兄弟阋墙": { pinyin: "xiōng dì xì qiáng", category: "典故" },
+  "自怨自艾": { pinyin: "zì yuàn zì yì", category: "典故" },
+  "否极泰来": { pinyin: "pǐ jí tài lái", category: "典故" },
+  "臧否人物": { pinyin: "zāng pǐ rén wù", category: "典故" },
+  "不亦乐乎": { pinyin: "bù yì lè hū", category: "典故" },
+  "春风风人": { pinyin: "chūn fēng fèng rén", category: "典故", source: "后风读 fèng" },
+  "夏雨雨人": { pinyin: "xià yǔ yù rén", category: "典故", source: "后雨读 yù" },
+  "乐府": { pinyin: "yuè fǔ", category: "专名" },
+  "论语": { pinyin: "lún yǔ", category: "专名" },
+  "天姥山": { pinyin: "tiān mǔ shān", category: "专名", source: "李白《梦游天姥吟留别》" },
+  "六幺": { pinyin: "liù yāo", category: "专名", source: "琵琶曲名" },
+  "霓裳": { pinyin: "ní cháng", category: "专名", source: "霓裳羽衣曲" },
+
+  // ─── 补充通假字 ───
+  "罢":  { pinyin: "pí", category: "通假字", source: "通'疲'" },
+  "信":  { pinyin: "shēn", category: "通假字", source: "通'伸'" },
+  "向":  { pinyin: "xiǎng", category: "通假字", source: "通'响'" },
+  "畜":  { pinyin: "xù", category: "通假字", source: "通'蓄'" },
+  "陈":  { pinyin: "zhèn", category: "通假字", source: "通'阵'" },
+  "贾":  { pinyin: "jià", category: "通假字", source: "通'价'" },
+  "齐":  { pinyin: "jì", category: "通假字", source: "通'剂'" },
+  "食之不能尽其材": { pinyin: "sì zhī bù néng jìn qí cái", category: "通假字", source: "食通'饲'，材通'才'，《马说》" },
+  "邪":  { pinyin: "yé", category: "通假字", source: "通'耶'，语气词" },
+  "属予作文以记之": { pinyin: "zhǔ yǔ zuò wén yǐ jì zhī", category: "通假字", source: "属通'嘱'，《岳阳楼记》" },
+  "吴会": { pinyin: "wú kuài", category: "古地名", source: "吴郡与会稽郡合称" },
+  "邺水朱华": { pinyin: "yè shuǐ zhū huā", category: "典故", source: "曹植诗，《滕王阁序》" },
+  "睢园绿竹": { pinyin: "suī yuán lǜ zhú", category: "典故", source: "《滕王阁序》" },
+  "彭泽": { pinyin: "péng zé", category: "古地名" },
+  "临川": { pinyin: "lín chuān", category: "古地名", source: "谢灵运曾为临川内史" },
+};
+
+async function main() {
+  console.log(`Seeding ${Object.keys(DICT).length} pinyin dictionary entries...`);
+
+  // 清空现有词典
+  await prisma.pinyinDict.deleteMany();
+
+  let count = 0;
+  for (const [phrase, entry] of Object.entries(DICT)) {
+    await prisma.pinyinDict.create({
+      data: {
+        phrase,
+        pinyin: entry.pinyin,
+        category: entry.category,
+        source: entry.source || null,
+        verified: true, // seed 数据视为人工确认
+      },
+    });
+    count++;
+  }
+
+  console.log(`Done. Seeded ${count} entries.`);
+}
+
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(() => prisma.$disconnect());

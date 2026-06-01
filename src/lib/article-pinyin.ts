@@ -42,27 +42,39 @@ export interface AppliedPinyinCorrection extends ContextPinyinCorrection {
 
 export const ARTICLE_PINYIN_VERSION = 5;
 
-// Extend this reviewed lexicon as classical names and established readings are found.
-const CLASSICAL_PRONUNCIATIONS: Record<string, string> = {
-  "会稽": "kuài jī",
-  "单于": "chán yú",
-  "可汗": "kè hán",
-  "龟兹": "qiū cí",
-  "乐府": "yuè fǔ",
-  "少长咸集": "shào zhǎng xián jí",
-  "趣舍万殊": "qǔ shě wàn shū",
-  "时运不齐": "shí yùn bú jì",
-  "時運不齊": "shí yùn bú jì",
-  "访风景于崇阿": "fǎng fēng jǐng yú chóng ē",
-  "訪風景於崇阿": "fǎng fēng jǐng yú chóng ē",
-  "十旬休假": "shí xún xiū xiá",
-  "邺水朱华": "yè shuǐ zhū huā",
-  "鄴水朱華": "yè shuǐ zhū huā",
-  "吴会": "wú kuài",
-  "吳會": "wú kuài",
-};
+let _dictLoaded = false;
+let _dictPromise: Promise<void> | null = null;
 
-customPinyin(CLASSICAL_PRONUNCIATIONS);
+export async function ensurePinyinDict() {
+  if (_dictLoaded) return;
+  if (_dictPromise) { await _dictPromise; return; }
+
+  _dictPromise = (async () => {
+    try {
+      // Server-side: 直接读 DB; Client-side: fetch API
+      if (typeof window === "undefined") {
+        const { prisma } = await import("@/lib/prisma");
+        const entries = await prisma.pinyinDict.findMany({ select: { phrase: true, pinyin: true } });
+        const dict: Record<string, string> = {};
+        for (const e of entries) dict[e.phrase] = e.pinyin;
+        customPinyin(dict);
+      } else {
+        const res = await fetch("/api/pinyin-dict");
+        const dict: Record<string, string> = await res.json();
+        customPinyin(dict);
+      }
+    } catch {
+      // 降级：内置最小安全词典
+      customPinyin({
+        "会稽": "kuài jī", "单于": "chán yú", "可汗": "kè hán",
+        "龟兹": "qiū cí", "乐府": "yuè fǔ",
+      });
+    }
+    _dictLoaded = true;
+  })();
+
+  await _dictPromise;
+}
 
 export function buildArticlePinyinData(article: {
   title: string;

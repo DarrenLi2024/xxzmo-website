@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { runAiTask } from "@/lib/ai-task";
 import { pinyinCalibrationSchema } from "@/lib/ai-schemas";
 import { PINYIN_CALIBRATION_PROMPT_VERSION, buildPinyinCalibrationMessages } from "@/lib/prompts";
-import { applyContextPinyinCorrections, buildArticlePinyinData } from "@/lib/article-pinyin";
+import { applyContextPinyinCorrections, buildArticlePinyinData, ensurePinyinDict } from "@/lib/article-pinyin";
 
 export async function calibrateArticlePinyin(articleId: string) {
   const article = await prisma.article.findUnique({
@@ -14,6 +14,7 @@ export async function calibrateArticlePinyin(articleId: string) {
     throw new Error("文章不存在");
   }
 
+  await ensurePinyinDict();
   const baseline = buildArticlePinyinData(article);
   const aiResult = await runAiTask(
     "article.pinyin.calibration",

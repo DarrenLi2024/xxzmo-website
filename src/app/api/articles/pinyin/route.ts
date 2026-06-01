@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkRateLimit, rateLimitKey, rateLimitResponse } from '@/lib/rate-limit';
-import { buildArticlePinyinData, isCurrentArticlePinyinData } from '@/lib/article-pinyin';
+import { buildArticlePinyinData, isCurrentArticlePinyinData, ensurePinyinDict } from '@/lib/article-pinyin';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '文章不存在' }, { status: 404 });
     }
     
+    await ensurePinyinDict();
     const pinyinData = buildArticlePinyinData(article);
     
     await prisma.article.update({

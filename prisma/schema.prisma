@@ -158,3 +158,17 @@ model AiTaskLog {
   @@index([taskName, createdAt])
   @@index([success, createdAt])
 }
+
+model PinyinDict {
+  id        String   @id @default(cuid())
+  phrase    String
+  pinyin    String
+  category  String   @default("通假字")
+  source    String?
+  verified  Boolean  @default(false)
+  aiLogId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([phrase])
+}
