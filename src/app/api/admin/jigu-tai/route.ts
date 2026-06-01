@@ -38,11 +38,11 @@ export async function POST(request: NextRequest) {
         title: trimmedTitle, author: "佚名", source: "jigu",
         type: inferType(selectedSource.body, trimmedTitle),
         body: selectedSource.body, status: "review",
-        tagList: JSON.stringify(["辑古台", "待AI增强"]),
+        tagList: JSON.stringify([]),
         rawContent: JSON.stringify({ sourceCandidate: selectedSource, promptVersion: JIGU_IMPORT_PROMPT_VERSION, aiStatus: "pending" }),
         confidence: Math.min(0.95, selectedSource.confidence || 0.7),
       },
-    }, ["辑古台", "待AI增强"]);
+    }, []);
 
     await logAdminAction({
       action: "jigu.source.import", entityType: "article", entityId: article.id,
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       id: article.id, slug: article.slug, title: article.title,
       author: article.author, body: article.body.slice(0, 500),
-      annotations: [], tags: ["辑古台", "待AI增强"], status: "review",
+      annotations: [], tags: [], status: "review",
       confidence: selectedSource.confidence, sourceCandidate: selectedSource,
       aiWarning: "来源原文已导入待校，请在集校编辑确认后执行 AI 补全。",
     }, { status: 201 });
