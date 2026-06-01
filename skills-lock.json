@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "skills": {
+    "admin-dashboard": {
+      "source": "erichowens/some_claude_skills",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/admin-dashboard/SKILL.md",
+      "computedHash": "c34c30f479448625c3e8d0597839933a2f1770035bef6f822e94a6e16c75a584"
+    },
+    "code-review-security": {
+      "source": "hieutrtr/ai1-skills",
+      "sourceType": "github",
+      "skillPath": "skills/code-review-security/SKILL.md",
+      "computedHash": "a087b4f575afd3257fee5e00a40cfa0d9aa6ed867e6e7ca5b53f5804485aae40"
+    },
+    "nextjs-react-typescript": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "nextjs-react-typescript/SKILL.md",
+      "computedHash": "eb995cc826bf48498e0e90969fc7dadfa2ec634002c26cfcfde565134cefa738"
+    },
+    "senior-fullstack": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-fullstack/SKILL.md",
+      "computedHash": "a1bbb5942526a19de7b94768555a5509d37337f74ba163399ea0f41bc95959e7"
+    },
+    "shadcn-ui": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "skillPath": "plugins/developer-kit-typescript/skills/shadcn-ui/SKILL.md",
+      "computedHash": "a2c4e57faab8e31f3df91156edf2df1a5a7f6c242249b2d86ca11336c9183157"
+    },
+    "skill-creator": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/skill-creator/SKILL.md",
+      "computedHash": "5ea13a6d9f0d4bb694405d79acd00cadec0d21bb138c4dd10fcf3c500cb835c2"
+    },
+    "tailadmin-nextjs": {
+      "source": "eng0ai/eng0-template-skills",
+      "sourceType": "github",
+      "skillPath": "tailadmin-nextjs/SKILL.md",
+      "computedHash": "58600b3134aabeb741c4528c42175710ffd81eb7e2bcaf9df659f3410ad62aaa"
+    }
+  }
+}

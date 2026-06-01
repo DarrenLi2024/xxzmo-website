@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3080:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/prisma/dev.db
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - VOLCENGINE_API_KEY=${VOLCENGINE_API_KEY}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be configured}
+      - NEXT_PUBLIC_SITE_URL=http://localhost:3080
+    volumes:
+      - ./prisma/dev.db:/app/prisma/dev.db
+    restart: unless-stopped

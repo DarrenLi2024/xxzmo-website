@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Article {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  subtitle  String?
+  author    String   @default("狂野君")
+  source    String
+
+  preface     String?
+  body        String
+  postscript  String?
+  notes       String?
+
+  pinyin       String?
+  annotations  String?
+  translation  String?
+  appreciation String?
+  formatAnalysis String?
+  reviewReport String?
+
+  type        String
+  dateRaw     String?
+  dateParsed  DateTime?
+
+  tags    TagOnArticle[]
+  tagList String  @default("[]")
+
+  paintingId String?
+  painting   Painting? @relation(fields: [paintingId], references: [id])
+
+  status      String   @default("draft")
+  featured    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  publishedAt DateTime?
+  sortOrder   BigInt?
+
+  importBatch String?
+  rawContent  String?
+  aiRawOutput String?
+  confidence  Float?
+  likeCount   Int       @default(0)
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  category  String   @default("主题")
+  articles  TagOnArticle[]
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model TagOnArticle {
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  articleId String
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  tagId     String
+
+  @@id([articleId, tagId])
+}
+
+model Painting {
+  id        String    @id @default(cuid())
+  title     String
+  artist    String?
+  dynasty   String?
+  url       String
+  thumbnail String?
+  tags      String    @default("[]")
+  articles  Article[]
+  createdAt DateTime  @default(now())
+
+  externalId     String?   @unique
+  externalSource String?
+  description    String?
+  matchKeywords  String?   @default("[]")
+  matchCount     Int       @default(0)
+}
+
+model LlmProvider {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  label     String
+  baseUrl   String
+  model     String
+  apiKey    String?
+  priority  Int      @default(0)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DailyQuote {
+  id        String   @id @default(cuid())
+  content   String
+  source    String
+  sourceRef String?
+  aiPrompt  String?
+  dateKey   String   @unique
+  createdAt DateTime @default(now())
+}
+
+model SiteConfig {
+  id        String   @id @default(cuid())
+  siteName  String   @default("闲心子墨")
+  seoDesc   String?
+  authorName String  @default("狂野君")
+  authorTitle String?
+  avatarUrl  String?
+  bio        String?
+  signature  String?
+  homeChuliCount Int @default(10)
+  showStats  Boolean @default(true)
+  quoteSource String @default("collection_first")
+  quoteAiStyle String?
+  importSeparator String @default("---")
+  postsPerPage Int @default(10)
+  quoteStrategy String @default("latest")
+  aiStyle String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AdminActionLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  metadata   String?  @default("{}")
+  createdAt  DateTime @default(now())
+}
+
+model AiTaskLog {
+  id               String   @id @default(cuid())
+  taskName         String
+  promptVersion    String
+  providerName     String?
+  providerModel    String?
+  temperature      Float?
+  maxTokens        Int?
+  durationMs       Int?
+  success          Boolean
+  error            String?
+  rawOutputPreview String?
+  createdAt        DateTime @default(now())
+
+  @@index([taskName, createdAt])
+  @@index([success, createdAt])
+}
