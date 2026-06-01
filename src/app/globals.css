@@ -553,6 +553,8 @@
 .prose-line {
   display: inline;
   white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
   max-width: 100%;
 }
 
@@ -621,6 +623,12 @@
 @media (min-width: 641px) and (max-width: 1024px) {
   .ruby-container rt {
     font-size: 0.46em;
+  }
+
+  .poem-line {
+    white-space: normal;
+    word-break: break-all;
+    overflow-x: visible;
   }
 }
 
@@ -795,7 +803,8 @@
 
   .poem-line {
     overflow: visible !important;
-    white-space: nowrap !important;
+    white-space: normal !important;
+    word-break: break-all !important;
     break-inside: avoid;
     line-height: 1.8 !important;
   }
