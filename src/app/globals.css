@@ -185,7 +185,7 @@
   }
 
   .prose-cn p {
-    text-indent: 2em hanging;
+    text-indent: 2em;
     margin: 0 0 0.6em;
   }
 
@@ -206,7 +206,7 @@
   }
 
   .preface-block p {
-    text-indent: 2em hanging;
+    text-indent: 2em;
     margin: 0 0 0.3em;
   }
 
@@ -225,7 +225,7 @@
   }
 
   .notes-block p {
-    text-indent: 2em hanging;
+    text-indent: 2em;
     margin: 0 0 0.3em;
   }
 
@@ -541,7 +541,7 @@
 }
 
 .plain-prose-body p {
-  text-indent: 2em hanging;
+  text-indent: 2em;
   line-height: 1.85;
   margin: 0 0 0.6em;
 }
@@ -569,7 +569,7 @@
 }
 
 .indented-text p {
-  text-indent: 2em hanging;
+  text-indent: 2em;
   margin: 0 0 0.6em;
 }
 
@@ -578,7 +578,7 @@
 }
 
 .annotation-item {
-  text-indent: 2em hanging;
+  text-indent: 2em;
   line-height: 1.85;
   letter-spacing: 0.03em;
   margin-bottom: 0.6em;
@@ -598,7 +598,7 @@
 
 .plain-prose-body.pinyin-mode p {
   line-height: 2.5;
-  text-indent: 2em hanging;
+  text-indent: 2em;
   margin-bottom: 0.6em;
 }
 
@@ -777,7 +777,7 @@
 
   .plain-prose-body.pinyin-mode p {
     line-height: 2.4 !important;
-    text-indent: 2em hanging;
+    text-indent: 2em;
   }
 
   .plain-prose-body.pinyin-mode .prose-line {
@@ -807,7 +807,7 @@
   }
 
   .plain-prose-body p {
-    text-indent: 2em hanging;
+    text-indent: 2em;
     margin: 0 0 0.4em;
   }
 
@@ -818,7 +818,7 @@
   }
 
   .indented-text p {
-    text-indent: 2em hanging;
+    text-indent: 2em;
     margin: 0 0 0.4em;
   }
 
@@ -831,7 +831,7 @@
   }
 
   .preface-block p {
-    text-indent: 2em hanging;
+    text-indent: 2em;
   }
 
   .notes-block {
@@ -839,7 +839,7 @@
   }
 
   .notes-block p {
-    text-indent: 2em hanging;
+    text-indent: 2em;
   }
 
   .ruby-container rt {
@@ -874,6 +874,6 @@
 
   .pdf-print-section .indented-text p {
     margin: 0 0 3mm;
-    text-indent: 2em hanging;
+    text-indent: 2em;
   }
 }
