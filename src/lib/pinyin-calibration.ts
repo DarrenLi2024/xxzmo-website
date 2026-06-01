@@ -45,6 +45,28 @@ export async function calibrateArticlePinyin(articleId: string) {
     },
   };
 
+  // Phase 2: 高置信度校准自动入库，下次直接命中
+  const autoEntries: Array<{ phrase: string; pinyin: string; category: string; source?: string }> = [];
+  for (const c of merged.applied) {
+    if (c.confidence >= 0.85 && c.text.length >= 2) {
+      autoEntries.push({
+        phrase: c.text,
+        pinyin: c.pinyin.join(" "),
+        category: "通假字",
+        source: article.title,
+      });
+    }
+  }
+  if (autoEntries.length > 0) {
+    for (const entry of autoEntries) {
+      await prisma.pinyinDict.upsert({
+        where: { phrase: entry.phrase },
+        create: { ...entry, verified: false, aiLogId: aiResult.logId },
+        update: { pinyin: entry.pinyin, source: entry.source, aiLogId: aiResult.logId },
+      });
+    }
+  }
+
   await prisma.article.update({
     where: { id: article.id },
     data: { pinyin: JSON.stringify(data) },
