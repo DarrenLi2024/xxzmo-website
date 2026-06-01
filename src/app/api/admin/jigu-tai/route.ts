@@ -150,12 +150,13 @@ function matchConf(q: string, f: string, base: number): number {
 async function normalizeSource(input: unknown): Promise<SourceCandidate | null> {
   if (!input || typeof input !== "object") return null;
   const d = input as Partial<SourceCandidate>;
-  if (!d.title || !d.url || !d.body) return null;
-  const alt = await wikiExtract(d.title).catch(() => "");
+  if (!d.title || !d.body) return null;
+  const alt = d.url ? await wikiExtract(d.title).catch(() => "") : "";
   const body = cleanWiki(alt || d.body);
+  const url = d.url ? (() => { try { return new URL(d.url).toString(); } catch { return ""; } })() : "";
   return {
     id: d.id || "manual", title: d.title,
-    url: new URL(d.url).toString(),
+    url,
     source: d.source || "wikisource", label: d.label || "用户指定",
     excerpt: body.slice(0, 240), body,
     confidence: d.confidence || 0.7,
