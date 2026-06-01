@@ -67,9 +67,9 @@ export async function POST(request: NextRequest) {
 // ===================================================
 
 async function searchSources(title: string): Promise<SourceCandidate[]> {
-  const wiki = await searchWikisource(title).catch(() => []);
-  if (wiki.length > 0) return wiki;
-  return llmExtract(title);
+  const llm = await llmExtract(title).catch(() => []);
+  if (llm.length > 0) return llm;
+  return searchWikisource(title).catch(() => []);
 }
 
 // ---- 维基文库 ----
