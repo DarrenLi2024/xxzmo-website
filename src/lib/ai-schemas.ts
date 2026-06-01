@@ -19,9 +19,11 @@ export const aiSuggestionSchema = z.object({
 });
 
 export const articleAssistSchema = z.object({
+  authorSuggestion: z.string().default(""),
   titleSuggestion: z.string().default(""),
   typeSuggestion: z.string().default(""),
   typeExplanation: z.string().default(""),
+  dynastySuggestion: z.string().default(""),
   annotations: z.array(annotationSchema).default([]),
   translation: z.string().default(""),
   appreciation: z.string().default(""),

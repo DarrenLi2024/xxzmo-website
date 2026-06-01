@@ -34,9 +34,11 @@ interface AiAnnotation {
 }
 
 interface AiAnalysisResult {
+  authorSuggestion: string
   titleSuggestion: string
   typeSuggestion: string
   typeExplanation: string
+  dynastySuggestion: string
   annotations: AiAnnotation[]
   translation: string
   appreciation: string
@@ -458,14 +460,25 @@ export function ArticleForm(props: Props) {
           }
           setJiguFields(newJiguFields)
           setJiguStructuredAnnotations(data.annotations || [])
-          
+
           let newTags = form.tags
+          let newAuthor = form.author
+          let newDynasty = jiguFields.dynasty
+
+          if (data.authorSuggestion && data.authorSuggestion !== form.author && data.authorSuggestion !== "佚名") {
+            newAuthor = data.authorSuggestion
+            setForm(prev => ({ ...prev, author: data.authorSuggestion }))
+          }
+          if (data.dynastySuggestion && data.dynastySuggestion !== jiguFields.dynasty) {
+            newDynasty = data.dynastySuggestion
+            setJiguFields(prev => ({ ...prev, dynasty: data.dynastySuggestion }))
+          }
           if (data.tagSuggestions && data.tagSuggestions.length > 0) {
             const currentTags = form.tags.split(/[,，]/).map(t => t.trim()).filter(Boolean)
             newTags = [...new Set([...currentTags, ...data.tagSuggestions])].join(", ")
             setForm(prev => ({ ...prev, tags: newTags }))
           }
-          
+
           await autoSaveAfterAi(newJiguFields, newTags, data.annotations)
         }
       } else {
