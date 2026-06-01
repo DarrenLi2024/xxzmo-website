@@ -327,6 +327,7 @@ export function ArticleForm(props: Props) {
           body.appreciation = chuliAiFields.appreciation || undefined
         }
       } else {
+        body.type = form.type
         body.dateRaw = jiguFields.dynasty
         body.annotations = JSON.stringify(
           jiguStructuredAnnotations || jiguFields.annotations
