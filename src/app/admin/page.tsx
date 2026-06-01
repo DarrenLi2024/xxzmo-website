@@ -48,13 +48,33 @@ interface Stats {
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   // 获取统计数据
   useEffect(() => {
-    fetch("/api/stats")
-      .then((r) => r.json())
-      .then(setStats)
-      .catch(console.error)
+    async function loadStats() {
+      try {
+        const response = await fetch("/api/stats")
+        const text = await response.text()
+        const data = text ? JSON.parse(text) : null
+
+        if (!response.ok) {
+          throw new Error(data?.error || `请求失败：${response.status}`)
+        }
+
+        if (!data) {
+          throw new Error("统计接口返回为空")
+        }
+
+        setStats(data)
+        setError(null)
+      } catch (err) {
+        console.error(err)
+        setError(err instanceof Error ? err.message : "统计数据加载失败")
+      }
+    }
+
+    loadStats()
   }, [])
 
   function timeAgo(iso: string): string {
@@ -65,6 +85,21 @@ export default function AdminDashboard() {
     const hours = Math.floor(mins / 60)
     if (hours < 24) return `${hours} 小时前`
     return `${Math.floor(hours / 24)} 天前`
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold text-foreground">仪表盘</h1>
+        </div>
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            {error}
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   if (!stats) {
