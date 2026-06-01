@@ -143,6 +143,61 @@ export async function POST(request: Request) {
 
 只输出 JSON，不要有任何其他文字。`;
 
+    // 大文本分块处理：超过12000字时按空行分批
+    const MAX_CHUNK_CHARS = 12000;
+    const needChunking = text.length > MAX_CHUNK_CHARS;
+
+    if (needChunking) {
+      const allArticles: ParsedArticle[] = [];
+      const chunks = splitIntoChunks(text, MAX_CHUNK_CHARS);
+
+      for (let ci = 0; ci < chunks.length; ci++) {
+        const chunk = chunks[ci];
+        const chunkUserMsg = `第 ${ci + 1}/${chunks.length} 批：
+
+${chunk}`;
+
+        const chunkResult = await runAiTask(
+          "xianyin.parse",
+          [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: chunkUserMsg },
+          ],
+          xianyinParseSchema,
+          {
+            promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
+            temperature: 0.1,
+            maxTokens: 16384,
+          }
+        );
+
+        const chunkArticles: ParsedArticle[] = chunkResult.data.articles.map((a: any, index: number) => ({
+          id: `ai-parse-c${ci}-${index}-${Date.now()}`,
+          title: a.title || "无题",
+          type: a.type || "诗",
+          subType: a.subType,
+          body: a.body,
+          preface: a.preface || undefined,
+          postscript: a.postscript || undefined,
+          confidence: a.confidence || 0.85,
+          classificationReasons: a.classificationReasons || [],
+          splitReason: a.splitReason || "AI 分块分析",
+        }));
+
+        allArticles.push(...chunkArticles);
+      }
+
+      const duplicates = findDuplicates(allArticles);
+
+      return NextResponse.json({
+        articles: allArticles,
+        count: allArticles.length,
+        strategy: `AI 分块分析 (${chunks.length}批)`,
+        confidence: 0.88,
+        duplicates,
+      }, { status: 200 });
+    }
+
     const userMessage = `请分析以下文本并进行智能分篇：
 
 ${text}`;
@@ -156,8 +211,8 @@ ${text}`;
       xianyinParseSchema,
       {
         promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
-        temperature: 0.3,
-        maxTokens: 8192,
+        temperature: 0.1,
+        maxTokens: 16384,
       }
     );
 
@@ -198,4 +253,26 @@ ${text}`;
     const message = error instanceof Error ? error.message : "AI 分篇失败";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+/** 按自然段落边界将长文本拆分为不超过 maxChars 的块 */
+function splitIntoChunks(text: string, maxChars: number): string[] {
+  const paragraphs = text.split(/\n\n+/);
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const para of paragraphs) {
+    if (current.length + para.length > maxChars && current.length > 0) {
+      chunks.push(current.trim());
+      current = para;
+    } else {
+      current += (current ? "\n\n" : "") + para;
+    }
+  }
+
+  if (current.trim()) {
+    chunks.push(current.trim());
+  }
+
+  return chunks.length > 0 ? chunks : [text];
 }
