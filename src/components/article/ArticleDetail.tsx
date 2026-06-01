@@ -130,6 +130,12 @@ export function ArticleDetail({
     quote: convertText(annotation.quote),
   }));
 
+  // 根据 scriptMode 推导当前 lang 属性 (简/繁)
+  const htmlLang = scriptMode === "traditional" ? "zh-Hant" : "zh-Hans";
+
+  // 拼音注音的 lang 属性
+  const pinyinLang = "zh-Latn";
+
   async function setDisplayScript(nextMode: Exclude<ScriptMode, "original">) {
     if (scriptMode === nextMode) return;
     setIsScriptConverting(true);
@@ -137,9 +143,8 @@ export function ArticleDetail({
       const converter = await loadConverter(nextMode);
       setScriptConverter(() => converter);
       setScriptMode(nextMode);
-      // 更新页面 lang 属性以匹配当前字形模式
-      const langVal = nextMode === "traditional" ? "zh-Hant" : "zh-Hans";
-      document.documentElement.setAttribute("lang", langVal);
+      // 同步页面级 lang 属性
+      document.documentElement.setAttribute("lang", nextMode === "traditional" ? "zh-Hant" : "zh-Hans");
     } finally {
       setIsScriptConverting(false);
     }
@@ -211,7 +216,7 @@ export function ArticleDetail({
 
       {/* 注释 - PDF 预览式垂直排布 */}
       {visibleAnnotations && visibleAnnotations.length > 0 && (
-        <section className="mt-10 pt-6 border-t border-paper-200">
+        <section className="mt-10 pt-6 border-t border-paper-200" lang={htmlLang}>
           <h2 className="text-lg font-serif text-ink-900 font-medium mb-4">注释</h2>
           <ol className="space-y-3 text-sm md:text-base text-ink-700">
             {visibleAnnotations.map((a, i) => (
@@ -235,7 +240,7 @@ export function ArticleDetail({
 
       {/* 译文 */}
       {translation && (
-        <section className="mt-10 pt-6 border-t border-paper-200">
+        <section className="mt-10 pt-6 border-t border-paper-200" lang={htmlLang}>
           <h2 className="text-lg font-serif text-ink-900 font-medium mb-4">译文</h2>
           <div className="indented-text text-sm md:text-base text-ink-700">
             {splitParagraphs(convertText(translation) || "").map((p, i) => (
@@ -247,7 +252,7 @@ export function ArticleDetail({
 
       {/* 赏析 */}
       {appreciation && (
-        <section className="mt-10 pt-6 border-t border-paper-200">
+        <section className="mt-10 pt-6 border-t border-paper-200" lang={htmlLang}>
           <h2 className="text-lg font-serif text-ink-900 font-medium mb-4">赏析</h2>
           <div className="indented-text text-sm md:text-base text-ink-700">
             {splitParagraphs(convertText(appreciation) || "").map((p, i) => (
