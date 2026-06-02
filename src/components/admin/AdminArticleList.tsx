@@ -468,6 +468,32 @@ export function AdminArticleList({
     })
   }
 
+  async function handleDeleteAllDuplicates() {
+    if (duplicates.length === 0) return
+    
+    // 收集所有重复项中"第二个"文章的 ID（保留每组的第一个）
+    const toDelete = duplicates.map(d => d.id2)
+    
+    confirm({
+      title: `确认一键删除全部 ${toDelete.length} 个重复项？`,
+      description: `将保留每组的第一篇，删除其余 ${toDelete.length} 篇。此操作不可恢复。`,
+      variant: "danger",
+      async onConfirm() {
+        let deleted = 0
+        for (const id of toDelete) {
+          try {
+            const res = await fetch(`/api/admin/articles/${id}`, { method: "DELETE" })
+            if (res.ok) deleted++
+          } catch {}
+        }
+        success(`已删除 ${deleted} 个重复项`)
+        setDuplicates([])
+        setDuplicateDialogOpen(false)
+        fetchArticles()
+      },
+    })
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -795,9 +821,18 @@ export function AdminArticleList({
             </div>
             
             <div className="p-4 overflow-y-auto max-h-[60vh]">
-              <p className="text-sm text-gray-500 mb-4">
-                检测到 {duplicates.length} 组相似文章（相似度 ≥ 85%）
-              </p>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-500">
+                  检测到 {duplicates.length} 组相似文章（相似度 ≥ 85%）
+                </p>
+                <button
+                  onClick={() => handleDeleteAllDuplicates()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors"
+                >
+                  <Trash size={14} />
+                  一键删除全部重复项
+                </button>
+              </div>
               
               <div className="space-y-3">
                 {duplicates.map((pair, index) => (
