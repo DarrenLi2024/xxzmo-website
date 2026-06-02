@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { runAiTask } from "@/lib/ai-task";
 import { xianyinParseSchema } from "@/lib/ai-schemas";
@@ -101,168 +102,97 @@ export async function POST(request: Request) {
     });
 
     if (providers.length === 0) {
-      return NextResponse.json({ 
-        error: "未配置可用的 LLM Provider，无法使用 AI 分篇功能" 
+      return NextResponse.json({
+        error: "未配置可用的 LLM Provider，无法使用 AI 分篇功能"
       }, { status: 400 });
     }
 
-    const systemPrompt = `你是一位古典文学专家，擅长分析古诗文结构。你的任务是将输入的文本智能拆分为多篇文章，并识别序文和跋文。
+    // Stage 1: 规则预分割
+    const candidates = presplitByTitles(text);
 
-请严格按照以下 JSON 格式输出，不要添加任何额外说明：
+    // Stage 2: AI 分类精修（每批最多10篇）
+    const BATCH_SIZE = 10;
+    const allArticles: ParsedArticle[] = [];
+
+    for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+      const batch = candidates.slice(i, i + BATCH_SIZE);
+      const batchText = batch.map((c, idx) =>
+        `[${idx + 1}] ${c.title}\n${c.body.slice(0, 600)}`
+      ).join('\n---\n');
+
+      const classifyPrompt = `你是古典文学分类专家。为每块判断体裁并提取序跋。只输出JSON。
 
 {
-  "articles": [
+  "items": [
     {
-      "title": "文章标题",
-      "type": "诗/词/文/赋/随笔等",
-      "subType": "细分类型如：五言绝句、七言律诗、词牌名等",
-      "body": "正文内容（不含序和跋）",
-      "preface": "序文内容（如果没有则为空字符串）",
-      "postscript": "跋文内容（如果没有则为空字符串）",
-      "confidence": 0.95,
-      "classificationReasons": ["识别依据1", "识别依据2"],
-      "splitReason": "分篇理由"
+      "candidateIndex": 1,
+      "type": "诗/词/文/赋/随笔",
+      "subType": "七绝 或 五律 或词牌名 等",
+      "preface": "序文(没有则空)",
+      "postscript": "跋文(没有则空)",
+      "confidence": 0.9,
+      "classificationReasons": ["依据"]
     }
   ]
-}
+}`;
 
-分篇规则：
-1. 标题识别：纯标题行（如"盛世瑞辞"、"春望"等）后跟诗文内容的，整行作为标题
-2. 词牌名标题：如"清平乐·村居"、"念奴娇·赤壁怀古"等
-3. 体裁+标题：如"七绝·思家"、"五律·春正"等
-4. 序文：通常在正文之前，包含写作背景、时间、地点、缘由等说明性文字
-5. 跋文：通常在正文之后，包含评论、感慨、时间落款等
-6. 如果序或跋与正文界限不明显，可以通过语义分析判断
-7. 只保留纯正文内容在body中
-
-体裁识别规则：
-- 诗：整齐的句式，多数5言或7言，有韵律
-- 词：有词牌名，或句子长短不一但有词的特征
-- 文：句子长短不一，无严格韵律
-- 赋：韵文性质，辞藻华丽
-
-只输出 JSON，不要有任何其他文字。`;
-
-    // 大文本分块处理：超过12000字时按空行分批
-    const MAX_CHUNK_CHARS = 8000;
-    const needChunking = text.length > MAX_CHUNK_CHARS;
-
-    if (needChunking) {
-      const allArticles: ParsedArticle[] = [];
-      const chunks = splitIntoChunks(text, MAX_CHUNK_CHARS);
-
-      // 批次间并发请求（最多2个并发，避免 rate limit）
-      const CONCURRENCY = 2;
-      for (let i = 0; i < chunks.length; i += CONCURRENCY) {
-        const batch = chunks.slice(i, i + CONCURRENCY);
-        const results = await Promise.all(
-          batch.map((chunk, bi) => {
-            const ci = i + bi;
-            return runAiTask(
-              "xianyin.parse",
-              [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: `第 ${ci + 1}/${chunks.length} 批，请只分析这一批中的诗文进行分篇：
-
-${chunk}` },
-              ],
-              xianyinParseSchema,
-              {
-                promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
-                temperature: 0.05,
-                maxTokens: 8192,
-              }
-            );
-          })
-        );
-
-        for (let bi = 0; bi < results.length; bi++) {
-          const ci = i + bi;
-          const articles = results[bi].data.articles.map((a: any, index: number) => ({
-            id: `ai-parse-c${ci}-${index}-${Date.now()}`,
-            title: a.title || "无题",
-            type: a.type || "诗",
-            subType: a.subType,
-            body: a.body,
-            preface: a.preface || undefined,
-            postscript: a.postscript || undefined,
-            confidence: a.confidence || 0.85,
-            classificationReasons: a.classificationReasons || [],
-            splitReason: a.splitReason || "AI 分块分析",
-          }));
-          allArticles.push(...articles);
+      const result = await runAiTask(
+        "xianyin.classify",
+        [
+          { role: "system", content: classifyPrompt },
+          { role: "user", content: batchText },
+        ],
+        z.object({
+          items: z.array(z.object({
+            candidateIndex: z.number().int().min(1),
+            type: z.string().default("诗"),
+            subType: z.string().default(""),
+            preface: z.string().default(""),
+            postscript: z.string().default(""),
+            confidence: z.number().min(0).max(1).default(0.85),
+            classificationReasons: z.array(z.string()).default([]),
+          }))
+        }),
+        {
+          promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
+          temperature: 0.1,
+          maxTokens: 4096,
         }
-      }
+      );
 
-      // 轻量去重：仅检查标题完全相同的
-      const seenTitles = new Set<string>();
-      const deduped: ParsedArticle[] = [];
-      for (const a of allArticles) {
-        const key = a.title;
-        if (!seenTitles.has(key)) {
-          seenTitles.add(key);
-          deduped.push(a);
-        }
+      for (const item of result.data.items) {
+        const candidate = batch[item.candidateIndex - 1];
+        if (!candidate) continue;
+        allArticles.push({
+          id: `ai-s2-${Date.now()}-${item.candidateIndex}`,
+          title: candidate.title,
+          type: item.type,
+          subType: item.subType || undefined,
+          body: candidate.body,
+          preface: item.preface || undefined,
+          postscript: item.postscript || undefined,
+          confidence: item.confidence,
+          classificationReasons: item.classificationReasons,
+          splitReason: "规则预切 + AI分类",
+        });
       }
-
-      return NextResponse.json({
-        articles: deduped,
-        count: deduped.length,
-        strategy: `AI 分块分析 (${chunks.length}批)`,
-        confidence: 0.88,
-        duplicates: [],
-      }, { status: 200 });
     }
 
-    const userMessage = `请分析以下文本并进行智能分篇：
-
-${text}`;
-
-    const aiResult = await runAiTask(
-      "xianyin.parse",
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      xianyinParseSchema,
-      {
-        promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
-        temperature: 0.05,
-        maxTokens: 8192,
-      }
-    );
-
-    const articles: ParsedArticle[] = aiResult.data.articles.map((a: {
-      title: string;
-      type: string;
-      subType?: string;
-      body: string;
-      preface?: string;
-      postscript?: string;
-      confidence?: number;
-      classificationReasons?: string[];
-      splitReason?: string;
-    }, index: number) => ({
-      id: `ai-parse-${index}-${Date.now()}`,
-      title: a.title || "无题",
-      type: a.type || "诗",
-      subType: a.subType,
-      body: a.body,
-      preface: a.preface || undefined,
-      postscript: a.postscript || undefined,
-      confidence: a.confidence || 0.85,
-      classificationReasons: a.classificationReasons || [],
-      splitReason: a.splitReason || "AI 智能分析",
-    }));
-
-    const duplicates = findDuplicates(articles);
+    // 去重
+    const seen = new Set<string>();
+    const deduped = allArticles.filter(a => {
+      const key = a.title + a.body.slice(0, 30);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
     return NextResponse.json({
-      articles,
-      count: articles.length,
-      strategy: "AI 语义分析",
-      confidence: 0.92,
-      duplicates,
+      articles: deduped,
+      count: deduped.length,
+      strategy: `规则预切(${candidates.length}) + AI分类(${allArticles.length})`,
+      confidence: 0.9,
+      duplicates: [],
     }, { status: 200 });
 
   } catch (error) {
@@ -271,35 +201,53 @@ ${text}`;
   }
 }
 
-/** 按自然段落边界 + 重叠区将长文本拆分 */
-function splitIntoChunks(text: string, maxChars: number): string[] {
-  const paragraphs = text.split(/\n\n+/);
-  const chunks: string[] = [];
-  let current = "";
-  let overlap = "";  // 前一个 chunk 的最后一段，作为重叠区避免截断文章
+/** Stage 1: 纯规则预分割。识别所有标题行作为边界 */
+function presplitByTitles(text: string): Array<{ title: string; body: string }> {
+  const lines = text.split("\n");
+  const result: Array<{ title: string; body: string }> = [];
+  let currentTitle = "";
+  let currentBody: string[] = [];
 
-  for (const para of paragraphs) {
-    if (current.length + para.length > maxChars && current.length > 500) {
-      // 回退：找到最后一个空行作为安全切割点
-      const lastBreak = current.lastIndexOf("\n\n");
-      if (lastBreak > current.length * 0.7) {
-        const main = current.slice(0, lastBreak).trim();
-        overlap = current.slice(lastBreak).trim();
-        chunks.push(main);
-        current = overlap + "\n\n" + para;
-      } else {
-        chunks.push(current.trim());
-        current = overlap + "\n\n" + para;
-        overlap = "";
+  const isTitle = (line: string): boolean => {
+    const t = line.trim();
+    if (!t || t.length > 25) return false;
+    return !!(
+      /^(五言绝句|七言绝句|五言律诗|七言律诗|五律|七律|五绝|七绝|古风|乐府|新诗|现代诗|词|曲|赋|文|记|序|书)[·.]/.test(t) ||
+      /^(如梦令|浣溪沙|蝶恋花|菩萨蛮|清平乐|西江月|忆秦娥|浪淘沙|虞美人|卜算子|临江仙|鹧鸪天|鹊桥仙|踏莎行|声声慢|念奴娇|水调歌头|满江红|沁园春|永遇乐|贺新郎|摸鱼儿|木兰花|采桑子|苏幕遮|破阵子|渔家傲|望海潮|雨霖铃|钗头凤|南乡子|玉楼春|定风波|江城子|一剪梅|霜天晓角|满庭芳|洞仙歌|八声甘州|点绛唇|谒金门|好事近|醉花阴|南歌子|眼儿媚|朝中措|柳梢青|风入松|行香子|千秋岁|天仙子|青玉案|桂枝香|水龙吟|齐天乐|何满子|六幺)[·.].*$/.test(t) ||
+      /^(如梦令|浣溪沙|蝶恋花|菩萨蛮|清平乐|西江月|忆秦娥|浪淘沙|虞美人|卜算子|临江仙|鹧鸪天|鹊桥仙|踏莎行|声声慢|念奴娇|水调歌头|满江红|沁园春|永遇乐|贺新郎|摸鱼儿|木兰花|采桑子|苏幕遮|破阵子|渔家傲|望海潮|雨霖铃|钗头凤|南乡子|玉楼春|定风波|江城子|一剪梅|霜天晓角|满庭芳|洞仙歌|八声甘州|点绛唇|谒金门|好事近|醉花阴|南歌子|眼儿媚|朝中措|柳梢青|风入松|行香子|千秋岁|天仙子|青玉案|桂枝香|水龙吟|齐天乐|何满子|六幺)$/.test(t) ||
+      /^(其[一二三四五六七八九十]+|[一二三四五六七八九十]+[、.]|\d+[、.])/.test(t) ||
+      /^.{2,12}(诗|词|曲|赋|记|序|书|论|说|表|铭|传|状|疏|议|启|笺|随笔|漫笔|琐记|杂记)$/.test(t)
+    );
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    if (isTitle(line) && (i === 0 || !lines[i - 1]?.trim() || currentBody.length >= 3)) {
+      if (currentTitle || currentBody.length > 0) {
+        result.push({ title: currentTitle || "无题", body: currentBody.join("\n").trim() });
       }
+      currentTitle = line;
+      currentBody = [];
     } else {
-      current += (current ? "\n\n" : "") + para;
+      currentBody.push(lines[i]);
     }
   }
 
-  if (current.trim()) {
-    chunks.push(current.trim());
+  if (currentTitle || currentBody.length > 0) {
+    result.push({ title: currentTitle || "无题", body: currentBody.join("\n").trim() });
   }
 
-  return chunks;
+  // 合并小尾巴
+  const merged: Array<{ title: string; body: string }> = [];
+  for (const b of result) {
+    const last = merged[merged.length - 1];
+    if (last && b.body.length < 20 && b.title === "无题" && !last.title.includes("无题")) {
+      last.body += "\n" + (b.body || "");
+    } else {
+      merged.push(b);
+    }
+  }
+
+  return merged;
 }
