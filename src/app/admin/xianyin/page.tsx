@@ -1,34 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, Loader2, Check, AlertTriangle, FileText, Tag, AlertCircle, Copy, ExternalLink, Trash2, RefreshCw, Sparkles } from "lucide-react";
+import { Upload, Loader2, FileText, Tag, Trash2, Sparkles, Copy, RefreshCw, ExternalLink, ChevronLeft, ChevronRight, PanelLeftClose, PanelRightClose } from "lucide-react";
 import { useToast } from "@/components/admin/Toast";
 
-const EXAMPLE = `秋日午后口占一首
-
-秋风起兮白云飞，
-草木黄落兮雁南归。
-兰有秀兮菊有芳，
-怀佳人兮不能忘。
-
-夜读偶得
-
-更深人静一灯孤，
-黄卷青灯伴老夫。
-读到会心微笑处，
-不知明月上庭梧。
-
-浣溪沙·春日
-
-一曲新词酒一杯，
-去年天气旧亭台。
-夕阳西下几时回？
-
-无可奈何花落去，
-似曾相识燕归来。
-小园香径独徘徊。`;
-
+// ============================================================
+// 类型定义
+// ============================================================
 interface ParsedArticle {
   id: string;
   title: string;
@@ -42,47 +21,113 @@ interface ParsedArticle {
   selected: boolean;
 }
 
-interface DuplicateItem {
-  original: string;
-  duplicate: string;
-  type: "exact" | "similar";
-  similarity: number;
-  diffSummary: string;
-}
+const WRITE_MODES = [
+  { value: "generate", label: "AI 生成", desc: "根据想法创作完整诗文" },
+  { value: "rewrite", label: "改写", desc: "用不同风格重写" },
+  { value: "expand", label: "扩写", desc: "将短句扩展为篇章" },
+  { value: "continue", label: "续写", desc: "根据开头续写" },
+  { value: "polish", label: "润色", desc: "优化用词和韵律" },
+  { value: "tuijiao", label: "推敲", desc: "逐字推敲给建议" },
+] as const;
 
-export default function AdminXianyinPage() {
+const TYPES = ["诗", "词", "文", "赋", "随笔", "日记", "对联"] as const;
+
+const EXAMPLE = `秋日午后口占一首
+
+秋风起兮白云飞，
+草木黄落兮雁南归。
+兰有秀兮菊有芳，
+怀佳人兮不能忘。
+
+夜读偶得
+
+更深人静一灯孤，
+黄卷青灯伴老夫。
+读到会心微笑处，
+不知明月上庭梧。`;
+
+// ============================================================
+// 组件
+// ============================================================
+export default function XianyinPage() {
   const router = useRouter();
   const { success, error: toastError } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 输入源
   const [text, setText] = useState("");
+  const [sourceLabel, setSourceLabel] = useState("");
   const [parsing, setParsing] = useState(false);
-  const [parsingMode, setParsingMode] = useState<"rule" | "ai" | "write">("rule");
+  const [parseMode, setParseMode] = useState<"rule" | "ai">("ai");
+
+  // 解析结果
   const [articles, setArticles] = useState<ParsedArticle[] | null>(null);
-  const [duplicates, setDuplicates] = useState<DuplicateItem[] | null>(null);
-  const [error, setError] = useState("");
-  const [separator, setSeparator] = useState("");
-  const [defaultType, setDefaultType] = useState("诗");
+
+  // AI 写作
   const [writeMode, setWriteMode] = useState("generate");
   const [writeType, setWriteType] = useState("诗");
   const [styleHint, setStyleHint] = useState("");
-  const [writeResult, setWriteResult] = useState<string | null>(null);
+  const [writeInput, setWriteInput] = useState("");
+  const [writeResult, setWriteResult] = useState("");
   const [writeProvider, setWriteProvider] = useState("");
   const [writeLoading, setWriteLoading] = useState(false);
 
-  async function handleParse() {
+  // UI 状态
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [mobileTab, setMobileTab] = useState<"source" | "result" | "write">("source");
+
+  // ========== 文件上传 ==========
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toastError("文件不能超过 5MB");
+      return;
+    }
+
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext === "txt" || ext === "md") {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setText(ev.target?.result as string || "");
+        setSourceLabel(`📄 ${file.name}`);
+      };
+      reader.readAsText(file);
+    } else if (ext === "pdf") {
+      setText(`[PDF 文件: ${file.name}]\n\n请将 PDF 内容复制粘贴到此处，或使用 AI 解析模式。`);
+      setSourceLabel(`📕 ${file.name} (需手动粘贴内容)`);
+      toastError("PDF 暂不支持自动提取，请手动复制内容后粘贴");
+    } else if (ext === "jpg" || ext === "jpeg" || ext === "png" || ext === "webp") {
+      setText(`[图片文件: ${file.name}]\n\n请将图片中的文字手动输入或使用 OCR 工具转换后粘贴。`);
+      setSourceLabel(`🖼️ ${file.name} (需手动输入文字)`);
+      toastError("图片暂不支持自动 OCR，请手动输入文字后粘贴");
+    } else {
+      toastError(`不支持的文件格式: .${ext}`);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [toastError]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const fakeEvent = { target: { files: [file] } } as unknown as React.ChangeEvent<HTMLInputElement>;
+    handleFileUpload(fakeEvent);
+  }, [handleFileUpload]);
+
+  // ========== 智能解析 ==========
+  const handleParse = useCallback(async () => {
     if (!text.trim()) return;
     setParsing(true);
-    setError("");
     setArticles(null);
-    setDuplicates(null);
 
     try {
-      const apiUrl = parsingMode === "ai" 
-        ? "/api/admin/xianyin/ai-parse" 
-        : "/api/admin/xianyin/parse";
-      
-      const body = parsingMode === "ai"
+      const apiUrl = parseMode === "ai" ? "/api/admin/xianyin/ai-parse" : "/api/admin/xianyin/parse";
+      const body = parseMode === "ai"
         ? { text: text.trim() }
-        : { text: text.trim(), separator, defaultType };
+        : { text: text.trim() };
 
       const res = await fetch(apiUrl, {
         method: "POST",
@@ -93,548 +138,292 @@ export default function AdminXianyinPage() {
       if (res.ok) {
         const data = await res.json();
         setArticles(data.articles.map((a: ParsedArticle) => ({ ...a, selected: true })));
-        setDuplicates(data.duplicates || []);
-        setText("");
+        success(`解析完成：${data.articles.length} 篇 (${data.strategy || parseMode})`);
       } else {
         const data = await res.json();
-        setError(data.error || "解析失败");
         toastError(data.error || "解析失败");
       }
     } catch {
-      setError("网络错误，请重试");
-      toastError("网络错误，请重试");
+      toastError("网络错误");
     } finally {
       setParsing(false);
     }
-  }
+  }, [text, parseMode, success, toastError]);
 
-  async function handleWrite() {
-    if (!text.trim()) return;
+  // ========== AI 写作 ==========
+  const handleWrite = useCallback(async () => {
+    if (!writeInput.trim()) return;
     setWriteLoading(true);
-    setWriteResult(null);
-    setWriteProvider("");
-    setError("");
-
+    setWriteResult("");
     try {
       const res = await fetch("/api/admin/xianyin/ai-write", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: writeMode,
-          type: writeType,
-          input: text.trim(),
-          styleHint: styleHint.trim() || undefined,
-        }),
+        body: JSON.stringify({ mode: writeMode, type: writeType, input: writeInput.trim(), styleHint: styleHint.trim() || undefined }),
       });
-
       if (res.ok) {
         const data = await res.json();
         setWriteResult(data.output);
         setWriteProvider(`${data.provider} (${data.model})`);
       } else {
         const data = await res.json();
-        setError(data.error || "创作失败");
         toastError(data.error || "创作失败");
       }
-    } catch {
-      setError("网络错误，请重试");
-      toastError("网络错误，请重试");
-    } finally {
-      setWriteLoading(false);
-    }
-  }
+    } catch { toastError("网络错误"); }
+    finally { setWriteLoading(false); }
+  }, [writeInput, writeMode, writeType, styleHint, toastError]);
 
-  function toggleSelectAll() {
-    if (!articles) return;
-    const allSelected = articles.every(a => a.selected);
-    setArticles(articles.map(a => ({ ...a, selected: !allSelected })));
-  }
+  const useAsSource = (content: string) => {
+    setText(content);
+    setSourceLabel("💡 来自 AI 创作");
+  };
 
-  function toggleSelect(id: string) {
+  // ========== 文章操作 ==========
+  const toggleSelect = (id: string) => {
     if (!articles) return;
     setArticles(articles.map(a => a.id === id ? { ...a, selected: !a.selected } : a));
-  }
-
-  function removeArticle(id: string) {
+  };
+  const toggleAll = () => {
+    if (!articles) return;
+    const allSel = articles.every(a => a.selected);
+    setArticles(articles.map(a => ({ ...a, selected: !allSel })));
+  };
+  const removeArticle = (id: string) => {
     if (!articles) return;
     setArticles(articles.filter(a => a.id !== id));
-  }
-
-  function updateArticle(id: string, field: 'title' | 'body' | 'preface' | 'postscript', value: string) {
+  };
+  const updateArticle = (id: string, field: string, value: string) => {
     if (!articles) return;
     setArticles(articles.map(a => a.id === id ? { ...a, [field]: value } : a));
-  }
+  };
 
-  async function handleImport() {
-    const selectedArticles = articles?.filter(a => a.selected);
-    if (!selectedArticles || selectedArticles.length === 0) {
-      toastError("请至少选择一篇文章");
-      return;
-    }
-
+  const handleImport = async () => {
+    const selected = articles?.filter(a => a.selected);
+    if (!selected?.length) { toastError("请至少选择一篇"); return; }
     setParsing(true);
     try {
       const res = await fetch("/api/admin/xianyin/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          articles: selectedArticles.map(a => ({
-            title: a.title,
-            body: a.body,
-            type: a.type,
-            subType: a.subType,
-            preface: a.preface,
-            postscript: a.postscript,
-          })),
-        }),
+        body: JSON.stringify({ articles: selected.map(a => ({ title: a.title, body: a.body, type: a.type, subType: a.subType, preface: a.preface, postscript: a.postscript })) }),
       });
-
       if (res.ok) {
         const data = await res.json();
-        success(`成功导入 ${data.count} 篇文章至樗栎集`);
+        success(`导入 ${data.count} 篇至樗栎集`);
         setArticles(null);
-        setDuplicates(null);
         router.push("/admin/chuli");
       } else {
         const data = await res.json();
         toastError(data.error || "导入失败");
       }
-    } catch {
-      toastError("网络错误，请重试");
-    } finally {
-      setParsing(false);
-    }
-  }
-
-  function getTypeBadge(type: string, subType?: string): string {
-    if (subType && subType !== type) {
-      return `${type}·${subType}`;
-    }
-    return type;
-  }
-
-  function getConfidenceColor(confidence: number): string {
-    if (confidence >= 0.9) return "text-green";
-    if (confidence >= 0.7) return "text-amber";
-    return "text-ink-400";
-  }
+    } catch { toastError("网络错误"); }
+    finally { setParsing(false); }
+  };
 
   const selectedCount = articles?.filter(a => a.selected).length || 0;
 
+  // ========== 三栏渲染 ==========
   return (
-    <div>
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h2 className="text-2xl font-serif text-ink-900">闲吟录</h2>
-          <p className="text-sm text-ink-500 mt-1">智能解析与分篇，确认后同步至樗栎集</p>
-        </div>
-        <button
-          onClick={() => router.push("/admin/chuli")}
-          className="px-4 py-2 border border-paper-300 text-ink-700 rounded-md text-sm hover:bg-paper-200 transition-colors"
-        >
-          查看樗栎集
-        </button>
+    <div className="h-[calc(100vh-5rem)] flex flex-col">
+      {/* 移动端 Tab 切换 */}
+      <div className="md:hidden flex border-b border-paper-200 bg-white sticky top-0 z-10">
+        {(["source", "result", "write"] as const).map(tab => (
+          <button key={tab} onClick={() => setMobileTab(tab)}
+            className={`flex-1 py-2 text-xs font-medium transition-colors ${mobileTab === tab ? "text-accent border-b-2 border-accent" : "text-ink-400"}`}>
+            {tab === "source" ? "📥 输入" : tab === "result" ? `📋 结果${articles ? `(${articles.length})` : ""}` : "✨ 写作"}
+          </button>
+        ))}
       </div>
 
-      {/* 输入区域 */}
-      <div className="bg-paper-50 border border-paper-200 rounded-lg p-6 space-y-4">
-        <div>
-          <label className="block text-sm text-ink-700 mb-2">
-            粘贴待解析的诗文 — 选择分篇模式进行智能解析
-          </label>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={EXAMPLE}
-            rows={12}
-            disabled={parsing}
-            className="w-full px-4 py-3 rounded-md border border-paper-300 bg-white text-ink-900 placeholder:text-ink-300 focus:outline-none focus:border-ink-300 transition-all font-serif leading-relaxed disabled:opacity-50"
-          />
-        </div>
-
-        <details className="text-sm">
-          <summary className="text-ink-500 cursor-pointer hover:text-ink-700">分篇模式说明</summary>
-          <div className="mt-2 p-4 bg-paper-100 rounded-md text-xs text-ink-500 space-y-2 font-mono whitespace-pre-wrap">
-            <div className="font-medium text-ink-700">【规则分篇】基于标题模式、韵律特征、序号等规则进行拆分</div>
-            <div className="text-ink-400">适用于：格式规范、标题明确的诗文</div>
-            <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
-              <div className="font-medium text-blue-700">【AI 智能分篇】(推荐)</div>
-              <div className="text-blue-600">基于语义理解进行智能拆分，序和跋将作为元数据附在对应文章</div>
-              <div className="text-blue-500 mt-1">适用于：复杂结构、无标记标题、序跋混杂的文本</div>
-            </div>
-          </div>
-        </details>
-
-        {/* 功能模式选择 */}
-        <div className="flex items-center gap-3 p-3 bg-accent-bg rounded-md border border-accent/20">
-          <span className="text-xs text-accent font-medium">功能模式：</span>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => setParsingMode("rule")}
-              disabled={parsing}
-              className={`px-4 py-1.5 text-xs rounded-full transition-colors ${
-                parsingMode === "rule"
-                  ? "bg-ink-700 text-white"
-                  : "bg-paper-200 text-ink-600 hover:bg-paper-300"
-              } disabled:opacity-50`}
-            >
-              智能分篇
-            </button>
-            <button
-              onClick={() => setParsingMode("ai")}
-              disabled={parsing}
-              className={`px-4 py-1.5 text-xs rounded-full transition-colors ${
-                parsingMode === "ai"
-                  ? "bg-accent text-white"
-                  : "bg-paper-200 text-ink-600 hover:bg-paper-300"
-              } disabled:opacity-50 flex items-center gap-1`}
-            >
-              <Sparkles size={12} /> AI 智能分篇
-            </button>
-            <button
-              onClick={() => setParsingMode("write")}
-              disabled={parsing}
-              className={`px-4 py-1.5 text-xs rounded-full transition-colors ${
-                parsingMode === "write"
-                  ? "bg-accent text-white"
-                  : "bg-paper-200 text-ink-600 hover:bg-paper-300"
-              } disabled:opacity-50 flex items-center gap-1`}
-            >
-              <Sparkles size={12} /> AI 创作辅助
+      <div className="flex-1 flex overflow-hidden">
+        {/* ===== 左栏: 输入源 ===== */}
+        <div className={`${leftCollapsed ? "hidden" : "flex"} ${mobileTab !== "source" ? "hidden md:flex" : "flex"} md:w-[30%] lg:w-[28%] flex-col border-r border-paper-200 bg-paper-50`}>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-paper-200 bg-white">
+            <h3 className="text-sm font-medium text-ink-700">输入源</h3>
+            <button onClick={() => setLeftCollapsed(true)} className="md:hidden p-1 text-ink-400 hover:text-ink-600">
+              <PanelLeftClose size={16} />
             </button>
           </div>
-        </div>
 
-        {parsingMode === "write" && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs text-ink-400 block mb-1">创作模式</label>
-                <select
-                  value={writeMode}
-                  onChange={(e) => setWriteMode(e.target.value)}
-                  className="w-full px-3 py-2 border border-paper-300 rounded-md text-sm focus:outline-none focus:border-accent"
-                >
-                  <option value="generate">✨ AI 生成 · 根据想法生成完整诗文</option>
-                  <option value="rewrite">🔄 改写 · 用不同风格重写</option>
-                  <option value="expand">📐 扩写 · 将短句扩展为篇章</option>
-                  <option value="continue">➡️ 续写 · 根据开头续写后续</option>
-                  <option value="polish">💎 润色 · 优化用词和韵律</option>
-                  <option value="tuijiao">🔍 推敲 · 逐字推敲给出替换建议</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-ink-400 block mb-1">目标体裁</label>
-                <select
-                  value={writeType}
-                  onChange={(e) => setWriteType(e.target.value)}
-                  className="w-full px-3 py-2 border border-paper-300 rounded-md text-sm focus:outline-none focus:border-accent"
-                >
-                  {["诗", "词", "文", "赋", "随笔", "日记", "对联"].map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-ink-400 block mb-1">风格偏好（可选）</label>
-                <input
-                  type="text"
-                  value={styleHint}
-                  onChange={(e) => setStyleHint(e.target.value)}
-                  placeholder="如：豪放、婉约、田园、咏史..."
-                  className="w-full px-3 py-2 border border-paper-300 rounded-md text-sm focus:outline-none focus:border-accent"
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={handleWrite}
-              disabled={writeLoading || !text.trim()}
-              className="w-full px-6 py-3 bg-accent text-white rounded-md text-sm hover:bg-accent-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          {/* 文件上传区 */}
+          <div className="p-3 border-b border-paper-100 bg-white">
+            <div
+              onDrop={handleDrop}
+              onDragOver={e => e.preventDefault()}
+              className="border-2 border-dashed border-paper-300 rounded-lg p-4 text-center hover:border-accent/40 transition-colors cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
             >
-              {writeLoading ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" /> AI 创作中...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={16} /> 开始 AI 创作
-                </>
-              )}
-            </button>
-
-            {writeResult && (
-              <div className="mt-4 p-6 bg-white rounded-lg border-2 border-accent space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-ink-400 flex items-center gap-1">
-                    <Sparkles size={12} className="text-accent" />
-                    AI 创作结果 · {writeProvider}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(writeResult);
-                        success("已复制到剪贴板");
-                      }}
-                      className="text-xs text-ink-400 hover:text-accent flex items-center gap-1"
-                    >
-                      <Copy size={14} /> 复制
-                    </button>
-                    <button
-                      onClick={() => {
-                        setText(writeResult);
-                        setWriteResult(null);
-                      }}
-                      className="text-xs text-ink-400 hover:text-accent flex items-center gap-1"
-                    >
-                      <RefreshCw size={14} /> 设为输入
-                    </button>
-                  </div>
-                </div>
-                <div className="font-serif text-sm md:text-base text-ink-800 leading-loose whitespace-pre-wrap">
-                  {writeResult}
-                </div>
-                <div className="pt-3 border-t border-paper-200">
-                  <button
-                    onClick={() => {
-                      setParsingMode("rule");
-                      setText(writeResult);
-                      setWriteResult(null);
-                    }}
-                    className="text-xs text-accent hover:text-accent-dim flex items-center gap-1"
-                  >
-                    <ExternalLink size={12} /> 将结果送到「智能分篇」进行分篇导入
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {parsingMode !== "write" && parsingMode === "rule" && (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-ink-400 block mb-1">分隔符（留空则智能分篇）</label>
-              <input
-                type="text"
-                value={separator}
-                onChange={(e) => setSeparator(e.target.value)}
-                placeholder="如：---"
-                className="w-full px-2 py-1.5 border border-paper-300 rounded text-xs focus:outline-none focus:border-ink-300"
-              />
+              <Upload size={20} className="mx-auto text-ink-400 mb-1" />
+              <p className="text-xs text-ink-500">拖拽文件或点击上传</p>
+              <p className="text-[10px] text-ink-400 mt-0.5">.txt .md .pdf .jpg .png (≤5MB)</p>
             </div>
-            <div>
-              <label className="text-xs text-ink-400 block mb-1">默认类型</label>
-              <select
-                value={defaultType}
-                onChange={(e) => setDefaultType(e.target.value)}
-                className="w-full px-2 py-1.5 border border-paper-300 rounded text-xs focus:outline-none focus:border-ink-300"
-              >
-                {["诗", "词", "曲", "文", "赋", "随笔", "日记", "小说"].map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
+            <input ref={fileInputRef} type="file" accept=".txt,.md,.pdf,.jpg,.jpeg,.png,.webp" onChange={handleFileUpload} className="hidden" />
+          </div>
+
+          {/* 文本粘贴区 */}
+          <div className="flex-1 flex flex-col p-3 overflow-hidden">
+            {sourceLabel && <p className="text-xs text-ink-500 mb-2 truncate">{sourceLabel}</p>}
+            <textarea
+              value={text}
+              onChange={e => { setText(e.target.value); setSourceLabel(""); }}
+              placeholder={EXAMPLE}
+              className="flex-1 w-full px-3 py-2 border border-paper-300 rounded-md bg-white text-sm font-serif resize-none focus:outline-none focus:border-accent"
+            />
+            <div className="flex gap-2 mt-2">
+              <button onClick={handleParse} disabled={parsing || !text.trim()}
+                className="flex-1 py-2 bg-accent text-white rounded text-xs font-medium hover:bg-accent-dim transition-colors disabled:opacity-50 flex items-center justify-center gap-1">
+                {parsing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                {parseMode === "ai" ? "AI 解析" : "规则解析"}
+              </button>
+              <select value={parseMode} onChange={e => setParseMode(e.target.value as "rule" | "ai")}
+                className="px-2 py-2 border border-paper-300 rounded text-xs bg-white">
+                <option value="ai">AI</option>
+                <option value="rule">规则</option>
               </select>
             </div>
           </div>
-        )}
+        </div>
 
-        {error && <p className="text-sm text-red">{error}</p>}
-
-        {parsingMode !== "write" && (
-        <button
-          onClick={handleParse}
-          disabled={parsing || !text.trim()}
-          className="px-6 py-2.5 bg-accent text-white rounded-md text-sm hover:bg-accent-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {parsing ? (
-            <>
-              <Loader2 size={16} className="animate-spin" /> 智能解析中...
-            </>
-          ) : (
-            <>
-              <RefreshCw size={16} /> 智能解析
-            </>
-          )}
-        </button>
-        )}
-      </div>
-
-      {/* 解析结果 */}
-      {articles && articles.length > 0 && (
-        <div className="mt-6 space-y-4">
-          {/* 操作栏 */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={articles.every(a => a.selected)}
-                  onChange={toggleSelectAll}
-                  className="rounded border-paper-300 text-accent focus:ring-accent"
-                />
-                <span className="text-sm text-ink-600">全选</span>
-              </label>
-              <span className="text-sm text-ink-400">
-                已选择 {selectedCount} / {articles.length} 篇
-              </span>
-            </div>
-            <button
-              onClick={handleImport}
-              disabled={parsing || selectedCount === 0}
-              className="px-6 py-2.5 bg-green text-white rounded-md text-sm hover:bg-green-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {parsing ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" /> 导入中...
-                </>
-              ) : (
-                <>
-                  <Upload size={16} /> 确认导入至樗栎集
-                </>
+        {/* ===== 中栏: 解析结果 ===== */}
+        <div className={`${mobileTab !== "result" ? "hidden md:flex" : "flex"} md:w-[40%] lg:w-[44%] flex-col border-r border-paper-200 overflow-hidden`}>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-paper-200 bg-white shrink-0">
+            <div className="flex items-center gap-2">
+              {leftCollapsed && (
+                <button onClick={() => setLeftCollapsed(false)} className="hidden md:block p-1 text-ink-400 hover:text-ink-600">
+                  <PanelLeftClose size={16} className="rotate-180" />
+                </button>
               )}
-            </button>
+              <h3 className="text-sm font-medium text-ink-700">
+                解析结果 {articles ? `(${articles.length}篇)` : ""}
+              </h3>
+            </div>
+            {articles && articles.length > 0 && (
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1 text-xs text-ink-500 cursor-pointer">
+                  <input type="checkbox" checked={articles.every(a => a.selected)} onChange={toggleAll} className="rounded" /> 全选
+                </label>
+                <span className="text-xs text-ink-400">{selectedCount}/{articles.length}</span>
+                <button onClick={handleImport} disabled={parsing || selectedCount === 0}
+                  className="px-3 py-1.5 bg-green text-white rounded text-xs font-medium hover:bg-green/80 transition-colors disabled:opacity-50">
+                  导入 {selectedCount} 篇
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* 重复内容提示 */}
-          {duplicates && duplicates.length > 0 && (
-            <div className="p-4 bg-amber/5 border border-amber/20 rounded-md">
-              <p className="text-sm text-amber-800 mb-3 flex items-center gap-2">
-                <AlertTriangle size={14} />
-                检测到相似文章 {duplicates.length} 组（建议人工比对校准）
-              </p>
-              <div className="space-y-3">
-                {duplicates.map((dup, idx) => (
-                  <div key={idx} className="p-3 bg-white rounded border border-amber-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">
-                        相似度 {Math.round(dup.similarity * 100)}%
-                      </span>
-                      <span className="text-xs text-ink-500">{dup.diffSummary}</span>
-                    </div>
-                    <div className="text-sm space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-ink-400">原文：</span>
-                        <span className="text-ink-700">{dup.original}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-ink-400">相似：</span>
-                        <span className="text-amber-700">{dup.duplicate}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {!articles && !parsing && (
+              <div className="flex items-center justify-center h-full text-ink-400 text-sm">
+                粘贴或上传文本后点击解析
               </div>
-            </div>
-          )}
-
-          {/* 解析结果列表 */}
-          <div className="grid gap-4">
-            {articles.map((article) => (
-              <div
-                key={article.id}
-                className={`bg-white rounded-lg border-2 transition-all ${
-                  article.selected
-                    ? "border-accent"
-                    : "border-paper-200 opacity-60"
-                }`}
-              >
-                {/* 头部 */}
-                <div className="flex items-center justify-between p-4 border-b border-paper-100">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={article.selected}
-                      onChange={() => toggleSelect(article.id)}
-                      className="rounded border-paper-300 text-accent focus:ring-accent"
-                    />
-                    <FileText size={16} className="text-accent" />
-                    <span className={`text-sm px-2 py-0.5 rounded bg-paper-100 ${getConfidenceColor(article.confidence)}`}>
-                      {getTypeBadge(article.type, article.subType)}
-                      <span className="text-ink-400 ml-1">({Math.round(article.confidence * 100)}%)</span>
+            )}
+            {parsing && (
+              <div className="flex items-center justify-center h-full text-ink-400">
+                <Loader2 size={20} className="animate-spin mr-2" /> 解析中...
+              </div>
+            )}
+            {articles?.map(article => (
+              <div key={article.id} className={`bg-white rounded-lg border-2 transition-all ${article.selected ? "border-accent" : "border-paper-200 opacity-60"}`}>
+                <div className="flex items-center justify-between px-3 py-2 border-b border-paper-100">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" checked={article.selected} onChange={() => toggleSelect(article.id)} className="rounded" />
+                    <span className="text-xs px-1.5 py-0.5 bg-paper-100 rounded">{article.type}{article.subType ? `·${article.subType}` : ""}</span>
+                    <span className={`text-[10px] ${article.confidence >= 0.9 ? "text-green" : article.confidence >= 0.7 ? "text-amber" : "text-ink-400"}`}>
+                      {Math.round(article.confidence * 100)}%
                     </span>
                   </div>
-                  <button
-                    onClick={() => removeArticle(article.id)}
-                    className="text-xs text-ink-400 hover:text-red flex items-center gap-1"
-                  >
-                    <Trash2 size={14} /> 删除
-                  </button>
+                  <button onClick={() => removeArticle(article.id)} className="text-ink-400 hover:text-red"><Trash2 size={14} /></button>
                 </div>
-
-                {/* 内容 */}
-                <div className="p-4 space-y-4">
-                  {/* 标题 */}
-                  <div>
-                    <label className="block text-xs text-ink-400 mb-1">标题</label>
-                    <input
-                      type="text"
-                      value={article.title}
-                      onChange={(e) => updateArticle(article.id, 'title', e.target.value)}
-                      className="w-full px-3 py-2 border border-paper-300 rounded-md text-sm focus:outline-none focus:border-accent"
-                    />
-                  </div>
-
-                  {/* 正文 */}
-                  {/* 序（如果有） */}
-            {article.preface && (
-              <div>
-                <label className="block text-xs text-ink-400 mb-1">
-                  <span className="text-blue-600">【序】</span> 系统识别的序言（可编辑）
-                </label>
-                <textarea
-                  value={article.preface}
-                  onChange={(e) => updateArticle(article.id, 'preface', e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-blue-200 bg-blue-50/50 rounded-md text-sm font-serif focus:outline-none focus:border-blue-400 resize-none"
-                />
-              </div>
-            )}
-
-            {/* 正文 */}
-            <div>
-              <label className="block text-xs text-ink-400 mb-1">正文</label>
-              <textarea
-                value={article.body}
-                onChange={(e) => updateArticle(article.id, 'body', e.target.value)}
-                rows={6}
-                className="w-full px-3 py-2 border border-paper-300 rounded-md text-sm font-serif focus:outline-none focus:border-accent resize-none"
-              />
-            </div>
-
-            {/* 跋（如果有） */}
-            {article.postscript && (
-              <div>
-                <label className="block text-xs text-ink-400 mb-1">
-                  <span className="text-amber-600">【跋】</span> 系统识别的跋语（可编辑）
-                </label>
-                <textarea
-                  value={article.postscript}
-                  onChange={(e) => updateArticle(article.id, 'postscript', e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-amber-200 bg-amber-50/50 rounded-md text-sm font-serif focus:outline-none focus:border-amber-400 resize-none"
-                />
-              </div>
-            )}
-
-            {/* 识别依据 */}
-                  {article.classificationReasons && article.classificationReasons.length > 0 && (
-                    <details className="text-xs">
-                      <summary className="text-ink-400 hover:text-ink-600 cursor-pointer flex items-center gap-1">
-                        <Tag size={12} /> 识别依据
-                      </summary>
-                      <div className="mt-2 pl-4 space-y-1 text-ink-500 border-l-2 border-paper-200">
-                        {article.classificationReasons.map((reason, idx) => (
-                          <p key={idx}>{reason}</p>
-                        ))}
-                      </div>
-                    </details>
+                <div className="p-3 space-y-2">
+                  <input value={article.title} onChange={e => updateArticle(article.id, "title", e.target.value)}
+                    className="w-full px-2 py-1 border border-paper-200 rounded text-sm font-medium focus:outline-none focus:border-accent" />
+                  {article.preface && (
+                    <textarea value={article.preface} onChange={e => updateArticle(article.id, "preface", e.target.value)}
+                      className="w-full px-2 py-1 border border-blue-200 bg-blue-50/30 rounded text-xs font-serif resize-none focus:outline-none" rows={2} />
+                  )}
+                  <textarea value={article.body} onChange={e => updateArticle(article.id, "body", e.target.value)}
+                    className="w-full px-2 py-1 border border-paper-200 rounded text-sm font-serif resize-none focus:outline-none focus:border-accent" rows={4} />
+                  {article.postscript && (
+                    <textarea value={article.postscript} onChange={e => updateArticle(article.id, "postscript", e.target.value)}
+                      className="w-full px-2 py-1 border border-amber-200 bg-amber-50/30 rounded text-xs font-serif resize-none focus:outline-none" rows={2} />
                   )}
                 </div>
               </div>
             ))}
           </div>
         </div>
-      )}
+
+        {/* ===== 右栏: AI 写作助手 ===== */}
+        <div className={`${rightCollapsed ? "hidden" : "flex"} ${mobileTab !== "write" ? "hidden md:flex" : "flex"} md:w-[30%] lg:w-[28%] flex-col border-r-0 bg-paper-50`}>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-paper-200 bg-white">
+            <h3 className="text-sm font-medium text-ink-700 flex items-center gap-1"><Sparkles size={14} className="text-accent" /> AI 助手</h3>
+            <button onClick={() => setRightCollapsed(true)} className="md:hidden p-1 text-ink-400"><PanelRightClose size={16} /></button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {/* 模式选择 */}
+            <div>
+              <label className="text-xs text-ink-500 block mb-1">模式</label>
+              <select value={writeMode} onChange={e => setWriteMode(e.target.value)}
+                className="w-full px-2 py-1.5 border border-paper-300 rounded text-xs">
+                {WRITE_MODES.map(m => <option key={m.value} value={m.value}>{m.label} — {m.desc}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs text-ink-500 block mb-1">体裁</label>
+                <select value={writeType} onChange={e => setWriteType(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-paper-300 rounded text-xs">
+                  {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="text-xs text-ink-500 block mb-1">风格(可选)</label>
+                <input value={styleHint} onChange={e => setStyleHint(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-paper-300 rounded text-xs" placeholder="豪放/婉约…" />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-ink-500 block mb-1">{writeMode === "generate" ? "想法/主题" : "输入内容"}</label>
+              <textarea value={writeInput} onChange={e => setWriteInput(e.target.value)}
+                className="w-full px-2 py-1.5 border border-paper-300 rounded text-sm font-serif resize-none focus:outline-none focus:border-accent"
+                rows={4} placeholder={writeMode === "generate" ? "如：写一首关于秋夜思乡的七律" : "粘贴需要处理的诗文…"} />
+            </div>
+
+            <button onClick={handleWrite} disabled={writeLoading || !writeInput.trim()}
+              className="w-full py-2 bg-accent text-white rounded text-xs font-medium hover:bg-accent-dim transition-colors disabled:opacity-50 flex items-center justify-center gap-1">
+              {writeLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {writeLoading ? "创作中…" : WRITE_MODES.find(m => m.value === writeMode)?.label}
+            </button>
+
+            {/* 输出区 */}
+            {writeResult && (
+              <div className="p-3 bg-white rounded-lg border-2 border-accent/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-ink-400">{writeProvider}</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => { navigator.clipboard.writeText(writeResult); success("已复制"); }}
+                      className="text-xs text-ink-400 hover:text-accent flex items-center gap-0.5"><Copy size={12} /> 复制</button>
+                    <button onClick={() => useAsSource(writeResult)}
+                      className="text-xs text-ink-400 hover:text-accent flex items-center gap-0.5"><ExternalLink size={12} /> 设为源</button>
+                  </div>
+                </div>
+                <div className="text-sm font-serif text-ink-800 leading-relaxed whitespace-pre-wrap">{writeResult}</div>
+              </div>
+            )}
+
+            {/* 提示 */}
+            <div className="p-2 bg-paper-100 rounded text-[10px] text-ink-400 leading-relaxed">
+              💡 提示：<br />
+              · 左侧粘贴或上传文本<br />
+              · 点击「AI 解析」自动分篇<br />
+              · 右侧可随时进行 AI 创作<br />
+              · 创作结果可「设为源」再分篇
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   PenLine,
   BookOpen,
   Sparkles,
+  Volume2,
   Tags,
   Image,
   Plug,
@@ -24,6 +25,7 @@ const iconMap = {
   PenLine,
   BookOpen,
   Sparkles,
+  Volume2,
   Tags,
   Image,
   Plug,
@@ -37,14 +39,14 @@ const groups = [
     items: [{ label: "馆藏总览", href: "/admin", icon: "LayoutDashboard" }],
   },
   {
-    label: "创作入库",
+    label: "创作工坊",
     items: [
-      { label: "闲吟录", href: "/admin/xianyin", icon: "Sparkles" },
+      { label: "闲吟录 2.0", href: "/admin/xianyin", icon: "Sparkles" },
       { label: "樗栎集管理", href: "/admin/chuli", icon: "PenLine" },
     ],
   },
   {
-    label: "辑校典藏",
+    label: "典藏辑校",
     items: [
       { label: "辑古台", href: "/admin/jigu-tai", icon: "BookOpen" },
       { label: "辑古录管理", href: "/admin/jigu", icon: "Tags" },
@@ -53,9 +55,16 @@ const groups = [
     ],
   },
   {
-    label: "系统运营",
+    label: "审校运营",
+    items: [
+      { label: "读音审校", href: "/admin/pinyin-dict", icon: "Volume2" },
+    ],
+  },
+  {
+    label: "系统配置",
     items: [
       { label: "API 配置", href: "/admin/api-config", icon: "Plug" },
+      { label: "标签管理", href: "/admin/tags", icon: "Tags" },
       { label: "系统设置", href: "/admin/settings", icon: "Settings" },
     ],
   },
