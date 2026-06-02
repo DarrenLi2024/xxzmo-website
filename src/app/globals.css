@@ -175,7 +175,7 @@
     text-align: justify;
     text-justify: auto;
     line-break: strict;
-    word-break: keep-all;
+    word-break: normal;
     overflow-wrap: break-word;
     hanging-punctuation: allow-end;
     letter-spacing: 0.02em;
@@ -196,6 +196,8 @@
   }
 
   .preface-block {
+    word-break: normal;
+    overflow-wrap: break-word;
     font-family: var(--font-noto-serif-sc), 'Noto Serif SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'STSong', 'Songti SC', 'SimSun', serif;
     font-size: 0.875rem;
     color: var(--muted-foreground);
@@ -217,6 +219,8 @@
   }
 
   .notes-block {
+    word-break: normal;
+    overflow-wrap: break-word;
     font-family: var(--font-noto-serif-sc), 'Songti SC', 'SimSun', 'STSong', serif;
     font-size: 0.875rem;
     color: var(--muted-foreground);
@@ -536,7 +540,7 @@
   text-align: justify;
   text-justify: auto;
   line-break: strict;
-  word-break: keep-all;
+  word-break: normal;
   overflow-wrap: break-word;
   hanging-punctuation: allow-end;
   letter-spacing: 0.02em;
@@ -568,7 +572,8 @@
   line-height: 1.85;
   letter-spacing: 0.02em;
   line-break: strict;
-  word-break: keep-all;
+  word-break: normal;
+  overflow-wrap: break-word;
   hanging-punctuation: allow-end;
   text-spacing: normal;
   text-autospace: normal;
@@ -588,6 +593,7 @@
 .annotation-item {
   text-indent: 2em;
   line-height: 1.85;
+  word-break: normal;
   letter-spacing: 0.03em;
   margin-bottom: 0.6em;
 }
@@ -600,7 +606,7 @@
   text-align: justify;
   text-justify: auto;
   overflow-wrap: normal;
-  word-break: keep-all;
+  word-break: normal;
   letter-spacing: 0.01em;
   text-align-last: start;
 }
@@ -819,6 +825,7 @@
   .plain-prose-body {
     text-align: justify;
     text-justify: auto;
+    word-break: normal;
     line-height: 1.7 !important;
     letter-spacing: 0.02em;
     text-align-last: start;
@@ -831,6 +838,7 @@
 
   .indented-text {
     text-align: justify;
+    word-break: normal;
     line-height: 1.7 !important;
     letter-spacing: 0.03em;
   }
