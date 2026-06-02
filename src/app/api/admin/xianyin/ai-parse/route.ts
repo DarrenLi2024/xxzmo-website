@@ -17,45 +17,37 @@ interface ParsedArticle {
   splitReason: string;
 }
 
-// 每轮 LLM 调用的最大输入字符数（~8000 chars ≈ 4000-8000 tokens）
-const MAX_CHARS_PER_ROUND = 8000;
-// 重叠区：上一轮最后 300 字作为上下文传给下一轮，防止文章在边界被截断
-const OVERLAP_CHARS = 300;
+// 每段最多字符数（~6000 chars，约等于 3000-5000 tokens 输入 + 留余量给输出）
+const CHUNK_SIZE = 6000;
 
-const systemPrompt = `你是古典诗文分篇专家。你的任务是从输入文本中，自上而下识别并提取所有独立的诗文篇目。
+const systemPrompt = `你是古典诗文分篇专家。从文本中识别并提取所有独立篇目。每篇包含：标题、正文、序文(如有)、跋文(如有)。
 
-输出 JSON：
+输出 JSON:
 {
   "articles": [
     {
-      "title": "原标题",
+      "title": "标题",
       "type": "诗/词/文/赋/随笔/日记",
-      "subType": "七绝/五律/浣溪沙/记/序 等",
-      "body": "完整正文(不含序跋)",
-      "preface": "序文(没有则空)",
-      "postscript": "跋文(没有则空)",
+      "subType": "七绝/五律/浣溪沙/记 等",
+      "body": "正文",
+      "preface": "序(无则空)",
+      "postscript": "跋(无则空)",
       "confidence": 0.92,
-      "classificationReasons": ["判断依据"]
+      "classificationReasons": ["依据"]
     }
-  ],
-  "nextStartHint": "下一轮继续解析的起始短语（当本轮未处理完时提供；若已全部处理完毕则为空字符串）"
+  ]
 }
 
-核心规则：
-1. 自上而下逐篇解析，不要跳篇
-2. 标题识别：诗文体·标题（如"七绝·思家"）、词牌名·标题（如"浣溪沙·春思"）、纯标题（如"秋日感怀"）、数字序号（如"其一""1."）
-3. 序文通常在标题后正文前，包含时间/背景/缘由等说明文字
-4. 跋文通常在正文后，包含评论/落款等
-5. 正文即诗歌/词/文的主体内容
-6. 如果本轮结束时还有大量未处理内容，设置 nextStartHint 为非空字符串（简短标记剩余文本的起始位置）
-7. 不要为了填满输出而合并不同篇目
+标题识别: 体裁·标题(如"七绝·思家") / 词牌·标题(如"浣溪沙·春思") / 纯标题(如"秋日感怀") / 数字序号(如"其一") / 日期(如"2024.03.15")
+体裁: 诗(句式整齐,有韵律,通常4-8行) / 词(有词牌,长短句) / 文(自由句式,较长) / 赋(骈俪辞藻) / 随笔/日记(生活化内容)
+序文: 标题后正文前的说明文字(背景/时间/缘由)
+跋文: 正文后的评论/落款/日期
 
 只输出 JSON。`;
 
 export async function POST(request: Request) {
   try {
     const { text } = await request.json();
-
     if (!text?.trim()) {
       return NextResponse.json({ error: "请提供待解析的文本" }, { status: 400 });
     }
@@ -69,24 +61,17 @@ export async function POST(request: Request) {
     }
 
     const cleanText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+    // 切分：在最近的空行处断开，保证不切断单行
+    const chunks = splitAtBlankLines(cleanText, CHUNK_SIZE);
+
+    // 每段独立调 LLM 分篇
     const allArticles: ParsedArticle[] = [];
-    let offset = 0;
-    let round = 0;
-    const maxRounds = 30; // 安全上限
-
-    while (offset < cleanText.length && round < maxRounds) {
-      round++;
-
-      // 截取本轮处理的文本
-      const chunkEnd = Math.min(offset + MAX_CHARS_PER_ROUND, cleanText.length);
-      const chunk = cleanText.slice(offset, chunkEnd);
-
-      // 构造用户消息：提示继续位置
-      const progressNote = round === 1
-        ? "请从文本开头开始，自上而下逐篇解析。"
-        : `请继续解析。这是第 ${round} 轮，从上一轮停止处接续。`;
-
-      const userMsg = `${progressNote}\n\n${chunk}`;
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const chunk = chunks[ci];
+      const userMsg = chunks.length > 1
+        ? `第 ${ci + 1}/${chunks.length} 段:\n\n${chunk}`
+        : chunk;
 
       const result = await runAiTask(
         "xianyin.parse",
@@ -105,7 +90,6 @@ export async function POST(request: Request) {
             confidence: z.number().min(0).max(1).default(0.85),
             classificationReasons: z.array(z.string()).default([]),
           })),
-          nextStartHint: z.string().default(""),
         }),
         {
           promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
@@ -114,13 +98,10 @@ export async function POST(request: Request) {
         }
       );
 
-      const roundArticles = result.data.articles;
-      const hint = result.data.nextStartHint || "";
-
-      // 收集本轮解析的文章
-      for (const a of roundArticles) {
+      for (const a of result.data.articles) {
+        if (!a.body?.trim()) continue; // 跳过空篇
         allArticles.push({
-          id: `ai-r${round}-${Date.now()}-${allArticles.length}`,
+          id: `ai-c${ci}-${Date.now()}-${allArticles.length}`,
           title: a.title || "无题",
           type: a.type || "诗",
           subType: a.subType || undefined,
@@ -129,53 +110,15 @@ export async function POST(request: Request) {
           postscript: a.postscript || undefined,
           confidence: a.confidence || 0.85,
           classificationReasons: a.classificationReasons || [],
-          splitReason: `自上而下分批解析 · 第${round}轮`,
+          splitReason: `分段解析 · 第${ci + 1}/${chunks.length}段`,
         });
-      }
-
-      // 计算下一轮的起始偏移
-      if (hint && hint.length > 0) {
-        // 在 chunk 中搜索 hint 的位置
-        const hintIdx = chunk.indexOf(hint);
-        if (hintIdx >= 0) {
-          offset = offset + hintIdx;
-        } else {
-          // 如果找不到 hint，则在 chunk 中向后搜索最后一个识别出的文章结尾
-          const lastArticle = roundArticles[roundArticles.length - 1];
-          if (lastArticle?.body) {
-            const bodyStart = chunk.lastIndexOf(lastArticle.body.slice(0, 60));
-            if (bodyStart >= 0) {
-              offset = offset + bodyStart + lastArticle.body.length;
-              // 向上对齐到最近的换行
-              while (offset < cleanText.length && cleanText[offset] !== "\n") offset++;
-            } else {
-              offset = chunkEnd - OVERLAP_CHARS;
-            }
-          } else {
-            offset = chunkEnd - OVERLAP_CHARS;
-          }
-        }
-      } else {
-        // 本轮已处理完所有文本
-        offset = cleanText.length;
-      }
-
-      // 防止死循环：如果 offset 没前进
-      if (offset < chunkEnd - OVERLAP_CHARS) {
-        // offset 异常，强制推进
-        offset = chunkEnd - OVERLAP_CHARS;
-      }
-
-      // 如果本轮没解析出任何文章且 hint 为空，结束
-      if (roundArticles.length === 0 && !hint) {
-        break;
       }
     }
 
-    // 去重
+    // 按标题去重
     const seen = new Set<string>();
     const deduped = allArticles.filter(a => {
-      const key = a.title + a.body.slice(0, 40);
+      const key = a.title + a.body.slice(0, 50);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -184,8 +127,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       articles: deduped,
       count: deduped.length,
-      rounds: round,
-      strategy: `自上而下分批解析 (${round}轮)`,
+      chunks: chunks.length,
+      strategy: `分段解析 (${chunks.length}段 → ${deduped.length}篇)`,
       confidence: 0.9,
       duplicates: [],
     }, { status: 200 });
@@ -195,4 +138,34 @@ export async function POST(request: Request) {
     console.error("AI parse error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+/**
+ * 在最近的空行处切分，保证不切断单行。
+ * 每段不超过 maxChars，如果某一段（两个空行之间）本身就超过 maxChars，
+ * 则在该段内按行数对半切分。
+ */
+function splitAtBlankLines(text: string, maxChars: number): string[] {
+  const paragraphs = text.split(/\n\n+/);
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const para of paragraphs) {
+    if (current && current.length + para.length > maxChars) {
+      chunks.push(current.trim());
+      current = para;
+    } else if (para.length > maxChars) {
+      // 单个段落太长，按行对半切
+      if (current) chunks.push(current.trim());
+      const lines = para.split("\n");
+      const mid = Math.ceil(lines.length / 2);
+      chunks.push(lines.slice(0, mid).join("\n").trim());
+      current = lines.slice(mid).join("\n");
+    } else {
+      current += (current ? "\n\n" : "") + para;
+    }
+  }
+
+  if (current.trim()) chunks.push(current.trim());
+  return chunks.length > 0 ? chunks : [text];
 }
