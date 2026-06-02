@@ -144,57 +144,73 @@ export async function POST(request: Request) {
 只输出 JSON，不要有任何其他文字。`;
 
     // 大文本分块处理：超过12000字时按空行分批
-    const MAX_CHUNK_CHARS = 12000;
+    const MAX_CHUNK_CHARS = 8000;
     const needChunking = text.length > MAX_CHUNK_CHARS;
 
     if (needChunking) {
       const allArticles: ParsedArticle[] = [];
       const chunks = splitIntoChunks(text, MAX_CHUNK_CHARS);
 
-      for (let ci = 0; ci < chunks.length; ci++) {
-        const chunk = chunks[ci];
-        const chunkUserMsg = `第 ${ci + 1}/${chunks.length} 批：
+      // 批次间并发请求（最多2个并发，避免 rate limit）
+      const CONCURRENCY = 2;
+      for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+        const batch = chunks.slice(i, i + CONCURRENCY);
+        const results = await Promise.all(
+          batch.map((chunk, bi) => {
+            const ci = i + bi;
+            return runAiTask(
+              "xianyin.parse",
+              [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: `第 ${ci + 1}/${chunks.length} 批，请只分析这一批中的诗文进行分篇：
 
-${chunk}`;
-
-        const chunkResult = await runAiTask(
-          "xianyin.parse",
-          [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: chunkUserMsg },
-          ],
-          xianyinParseSchema,
-          {
-            promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
-            temperature: 0.1,
-            maxTokens: 16384,
-          }
+${chunk}` },
+              ],
+              xianyinParseSchema,
+              {
+                promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
+                temperature: 0.05,
+                maxTokens: 8192,
+              }
+            );
+          })
         );
 
-        const chunkArticles: ParsedArticle[] = chunkResult.data.articles.map((a: any, index: number) => ({
-          id: `ai-parse-c${ci}-${index}-${Date.now()}`,
-          title: a.title || "无题",
-          type: a.type || "诗",
-          subType: a.subType,
-          body: a.body,
-          preface: a.preface || undefined,
-          postscript: a.postscript || undefined,
-          confidence: a.confidence || 0.85,
-          classificationReasons: a.classificationReasons || [],
-          splitReason: a.splitReason || "AI 分块分析",
-        }));
-
-        allArticles.push(...chunkArticles);
+        for (let bi = 0; bi < results.length; bi++) {
+          const ci = i + bi;
+          const articles = results[bi].data.articles.map((a: any, index: number) => ({
+            id: `ai-parse-c${ci}-${index}-${Date.now()}`,
+            title: a.title || "无题",
+            type: a.type || "诗",
+            subType: a.subType,
+            body: a.body,
+            preface: a.preface || undefined,
+            postscript: a.postscript || undefined,
+            confidence: a.confidence || 0.85,
+            classificationReasons: a.classificationReasons || [],
+            splitReason: a.splitReason || "AI 分块分析",
+          }));
+          allArticles.push(...articles);
+        }
       }
 
-      const duplicates = findDuplicates(allArticles);
+      // 轻量去重：仅检查标题完全相同的
+      const seenTitles = new Set<string>();
+      const deduped: ParsedArticle[] = [];
+      for (const a of allArticles) {
+        const key = a.title;
+        if (!seenTitles.has(key)) {
+          seenTitles.add(key);
+          deduped.push(a);
+        }
+      }
 
       return NextResponse.json({
-        articles: allArticles,
-        count: allArticles.length,
+        articles: deduped,
+        count: deduped.length,
         strategy: `AI 分块分析 (${chunks.length}批)`,
         confidence: 0.88,
-        duplicates,
+        duplicates: [],
       }, { status: 200 });
     }
 
@@ -211,8 +227,8 @@ ${text}`;
       xianyinParseSchema,
       {
         promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
-        temperature: 0.1,
-        maxTokens: 16384,
+        temperature: 0.05,
+        maxTokens: 8192,
       }
     );
 
@@ -255,16 +271,27 @@ ${text}`;
   }
 }
 
-/** 按自然段落边界将长文本拆分为不超过 maxChars 的块 */
+/** 按自然段落边界 + 重叠区将长文本拆分 */
 function splitIntoChunks(text: string, maxChars: number): string[] {
   const paragraphs = text.split(/\n\n+/);
   const chunks: string[] = [];
   let current = "";
+  let overlap = "";  // 前一个 chunk 的最后一段，作为重叠区避免截断文章
 
   for (const para of paragraphs) {
-    if (current.length + para.length > maxChars && current.length > 0) {
-      chunks.push(current.trim());
-      current = para;
+    if (current.length + para.length > maxChars && current.length > 500) {
+      // 回退：找到最后一个空行作为安全切割点
+      const lastBreak = current.lastIndexOf("\n\n");
+      if (lastBreak > current.length * 0.7) {
+        const main = current.slice(0, lastBreak).trim();
+        overlap = current.slice(lastBreak).trim();
+        chunks.push(main);
+        current = overlap + "\n\n" + para;
+      } else {
+        chunks.push(current.trim());
+        current = overlap + "\n\n" + para;
+        overlap = "";
+      }
     } else {
       current += (current ? "\n\n" : "") + para;
     }
@@ -274,5 +301,5 @@ function splitIntoChunks(text: string, maxChars: number): string[] {
     chunks.push(current.trim());
   }
 
-  return chunks.length > 0 ? chunks : [text];
+  return chunks;
 }
