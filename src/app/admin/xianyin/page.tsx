@@ -173,7 +173,7 @@ export default function XianyinPage() {
     finally { setWriteLoading(false); }
   }, [writeInput, writeMode, writeType, styleHint, toastError]);
 
-  const useAsSource = (content: string) => {
+  const sendToSource = (content: string) => {
     setText(content);
     setSourceLabel("💡 来自 AI 创作");
   };
@@ -405,7 +405,7 @@ export default function XianyinPage() {
                   <div className="flex gap-1">
                     <button onClick={() => { navigator.clipboard.writeText(writeResult); success("已复制"); }}
                       className="text-xs text-ink-400 hover:text-accent flex items-center gap-0.5"><Copy size={12} /> 复制</button>
-                    <button onClick={() => useAsSource(writeResult)}
+                    <button onClick={() => sendToSource(writeResult)}
                       className="text-xs text-ink-400 hover:text-accent flex items-center gap-0.5"><ExternalLink size={12} /> 设为源</button>
                   </div>
                 </div>
