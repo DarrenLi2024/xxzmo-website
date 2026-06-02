@@ -471,22 +471,26 @@ export function AdminArticleList({
   async function handleDeleteAllDuplicates() {
     if (duplicates.length === 0) return
     
-    // 收集所有重复项中"第二个"文章的 ID（保留每组的第一个）
-    const toDelete = duplicates.map(d => d.id2)
-    
     confirm({
-      title: `确认一键删除全部 ${toDelete.length} 个重复项？`,
-      description: `将保留每组的第一篇，删除其余 ${toDelete.length} 篇。此操作不可恢复。`,
+      title: `确认智能清理全部 ${duplicates.length} 组重复项？`,
+      description: `将按正文质量、信息完整度、发布日期等维度自动择优保留。此操作不可恢复。`,
       variant: "danger",
       async onConfirm() {
-        let deleted = 0
-        for (const id of toDelete) {
-          try {
-            const res = await fetch(`/api/admin/articles/${id}`, { method: "DELETE" })
-            if (res.ok) deleted++
-          } catch {}
+        try {
+          const res = await fetch("/api/admin/articles/auto-dedup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pairs: duplicates.map(d => ({ id1: d.id1, id2: d.id2 })) }),
+          })
+          const data = await res.json()
+          if (data.deleted > 0) {
+            success(`智能清理完成：保留 ${data.kept} 篇，删除 ${data.deleted} 篇重复项`)
+          } else {
+            toastError("清理失败，请检查网络")
+          }
+        } catch {
+          toastError("清理失败")
         }
-        success(`已删除 ${deleted} 个重复项`)
         setDuplicates([])
         setDuplicateDialogOpen(false)
         fetchArticles()
