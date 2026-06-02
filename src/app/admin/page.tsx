@@ -1,322 +1,160 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import dynamic from "next/dynamic"
-import {
-  PenLine,
-  BookOpen,
-  Tags,
-  Clock,
-  TrendingUp,
-  Plus,
-  Sparkles,
-} from "lucide-react"
-import { StatCard } from "@/components/admin/ui/stat-card"
-import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { BookOpen, PenLine, Sparkles, Volume2, FileText, TrendingUp, Activity, Loader2 } from "lucide-react";
 
-const TrendChart = dynamic(() => import("./TrendChart"), { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> })
-const TypePieChart = dynamic(() => import("./TypePieChart"), { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> })
-
-interface Stats {
-  chuliCount: number
-  jiguCount: number
-  tagCount: number
-  pendingCount: number
-  reviewCount: number
-  totalPublished: number
-  sourceRatio: { chuli: number; jigu: number }
-  coverage: { painting: number; ai: number }
-  health: {
-    articleTotal: number
-    paintingCoveredCount: number
-    aiCoveredCount: number
-    draftCount: number
-    reviewCount: number
-  }
-  recentActivity: { source: string; status: string; time: string }[]
-  recentActions: { action: string; entityType: string; entityId: string | null; summary: string; time: string }[]
-  typeDistribution: { type: string; count: number }[]
-  monthlyTrends: { month: string; chuli: number; jigu: number }[]
+interface DashboardData {
+  totalPublished: number;
+  chuliCount: number;
+  jiguCount: number;
+  draftCount: number;
+  reviewCount: number;
+  tagCount: number;
+  withPinyin: number;
+  withAnnotations: number;
+  withPainting: number;
+  recentActions: { action: string; summary: string; time: string }[];
+  typeDistribution: { type: string; count: number }[];
+  monthlyTrends: { month: string; count: number }[];
 }
 
+const TYPE_COLORS: Record<string, string> = {
+  "诗": "bg-amber-100 text-amber-700", "词": "bg-emerald-100 text-emerald-700",
+  "曲": "bg-purple-100 text-purple-700", "赋": "bg-orange-100 text-orange-700",
+  "文": "bg-sky-100 text-sky-700", "联": "bg-rose-100 text-rose-700",
+  "新诗": "bg-teal-100 text-teal-700", "打油诗": "bg-yellow-100 text-yellow-700",
+  "随笔": "bg-gray-100 text-gray-700", "日记": "bg-slate-100 text-slate-700",
+};
+
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // 获取统计数据
   useEffect(() => {
-    async function loadStats() {
-      try {
-        const response = await fetch("/api/stats")
-        const text = await response.text()
-        const data = text ? JSON.parse(text) : null
+    fetch("/api/admin/dashboard")
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
 
-        if (!response.ok) {
-          throw new Error(data?.error || `请求失败：${response.status}`)
-        }
+  if (loading) return (
+    <div className="admin-content flex items-center justify-center h-64">
+      <Loader2 className="animate-spin text-ink-400" size={24} />
+    </div>
+  );
 
-        if (!data) {
-          throw new Error("统计接口返回为空")
-        }
+  if (!data) return <div className="admin-content py-12 text-center text-ink-400">加载失败</div>;
 
-        setStats(data)
-        setError(null)
-      } catch (err) {
-        console.error(err)
-        setError(err instanceof Error ? err.message : "统计数据加载失败")
-      }
-    }
-
-    loadStats()
-  }, [])
-
-  function timeAgo(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return "刚刚"
-    if (mins < 60) return `${mins} 分钟前`
-    const hours = Math.floor(mins / 60)
-    if (hours < 24) return `${hours} 小时前`
-    return `${Math.floor(hours / 24)} 天前`
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-foreground">仪表盘</h1>
-        </div>
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            {error}
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  if (!stats) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-foreground">仪表盘</h1>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-card border border-border rounded-xl p-5">
-              <Skeleton className="h-4 w-20 mb-3" />
-              <Skeleton className="h-8 w-16" />
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
+  const statCards = [
+    { icon: BookOpen, label: "已发布", value: data.totalPublished, href: "/admin/chuli", color: "text-ink-900" },
+    { icon: PenLine, label: "樗栎集", value: data.chuliCount, href: "/admin/chuli", color: "text-accent" },
+    { icon: Sparkles, label: "辑古录", value: data.jiguCount, href: "/admin/jigu", color: "text-amber" },
+    { icon: Activity, label: "待处理", value: data.draftCount + data.reviewCount, href: "/admin/chuli", color: "text-sky-600" },
+  ];
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-foreground">仪表盘</h1>
-        <div className="flex items-center gap-2">
+    <div className="admin-content max-w-6xl">
+      {/* 页面标题 */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-serif font-bold text-ink-900">馆藏总览</h1>
+        <p className="text-sm text-ink-400 mt-1">
+          {new Date().toLocaleDateString("zh-CN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+        </p>
+      </div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {statCards.map(card => (
           <Link
-            href="/admin/chuli/new"
-            className="inline-flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted text-sm font-medium whitespace-nowrap transition-all outline-none select-none h-7 gap-1 px-2.5 text-[0.8rem]"
+            key={card.label}
+            href={card.href}
+            className="bg-white border border-paper-200 rounded-2xl p-5 hover:shadow-md hover:border-paper-300 transition-all duration-200 group"
           >
-            <Plus size={14} /> 新建
+            <card.icon size={20} className={card.color + " mb-3 opacity-70 group-hover:opacity-100 transition-opacity"} />
+            <p className="text-3xl font-bold text-ink-900 tracking-tight">{card.value}</p>
+            <p className="text-xs text-ink-400 mt-1">{card.label}</p>
           </Link>
-          <Link
-            href="/admin/jigu-tai"
-            className="inline-flex items-center justify-center rounded-lg border-0 bg-secondary text-secondary-foreground hover:bg-secondary/80 text-sm font-medium whitespace-nowrap transition-all outline-none select-none h-7 gap-1 px-2.5 text-[0.8rem]"
-          >
-            <Sparkles size={14} /> 辑古台
-          </Link>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* 数据完整度 */}
+        <div className="bg-white border border-paper-200 rounded-2xl p-6">
+          <h3 className="text-sm font-medium text-ink-600 mb-4">数据完整度</h3>
+          <div className="space-y-3">
+            {[
+              { label: "含拼音", value: data.withPinyin, total: data.totalPublished },
+              { label: "含注释", value: data.withAnnotations, total: data.totalPublished },
+              { label: "有配图", value: data.withPainting, total: data.totalPublished },
+            ].map(item => (
+              <div key={item.label}>
+                <div className="flex justify-between text-xs text-ink-500 mb-1">
+                  <span>{item.label}</span>
+                  <span>{Math.round((item.value / item.total) * 100)}%</span>
+                </div>
+                <div className="h-2 bg-paper-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent/60 rounded-full transition-all"
+                    style={{ width: `${(item.value / item.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 体裁分布 */}
+        <div className="bg-white border border-paper-200 rounded-2xl p-6">
+          <h3 className="text-sm font-medium text-ink-600 mb-4">体裁分布</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {data.typeDistribution.slice(0, 12).map(t => (
+              <span
+                key={t.type}
+                className={`px-2 py-0.5 rounded-full text-xs ${TYPE_COLORS[t.type] || "bg-gray-100 text-gray-600"}`}
+              >
+                {t.type} {t.count}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* 最近动态 */}
+        <div className="bg-white border border-paper-200 rounded-2xl p-6">
+          <h3 className="text-sm font-medium text-ink-600 mb-4">最近动态</h3>
+          <div className="space-y-2">
+            {data.recentActions.slice(0, 6).map((act, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs">
+                <span className="text-ink-300 shrink-0 w-12">{act.time}</span>
+                <span className="text-ink-600 truncate">{act.summary}</span>
+              </div>
+            ))}
+            {data.recentActions.length === 0 && (
+              <p className="text-xs text-ink-400">暂无操作记录</p>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="樗栎集"
-          value={stats.chuliCount}
-          icon={PenLine}
-          trend={{ value: stats.sourceRatio.chuli }}
-          href="/admin/chuli"
-        />
-        <StatCard
-          label="辑古录"
-          value={stats.jiguCount}
-          icon={BookOpen}
-          trend={{ value: stats.sourceRatio.jigu }}
-          href="/admin/jigu"
-        />
-        <StatCard
-          label="标签数"
-          value={stats.tagCount}
-          icon={Tags}
-          trend={{ value: stats.coverage.ai }}
-          href="/admin/tags"
-        />
-        <StatCard
-          label="待校审"
-          value={stats.reviewCount}
-          icon={Clock}
-          trend={{ value: stats.pendingCount }}
-          href="/admin/chuli"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">馆藏结构</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">原创 / 辑录</span>
-              <span>{stats.sourceRatio.chuli}% / {stats.sourceRatio.jigu}%</span>
-            </div>
-            <div className="h-2 rounded-full bg-muted overflow-hidden">
-              <div className="h-full bg-primary" style={{ width: `${stats.sourceRatio.chuli}%` }} />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">配图覆盖率</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold">{stats.coverage.painting}%</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.health.paintingCoveredCount}/{stats.health.articleTotal} 篇已有视觉注脚
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">AI 辑校覆盖</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold">{stats.coverage.ai}%</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.health.aiCoveredCount}/{stats.health.articleTotal} 篇含注释、译文或赏析
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <TrendingUp size={16} className="text-muted-foreground" />
-              文章发布趋势（近6个月）
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <TrendChart data={stats.monthlyTrends} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">内容类型分布</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <TypePieChart data={stats.typeDistribution} />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Activity & Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Activity */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">最近动态</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {stats.recentActions.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">暂无动态</p>
-            ) : (
-              <div className="divide-y divide-border">
-                {stats.recentActions.slice(0, 8).map((act, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-3 text-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-1.5 h-1.5 rounded-full bg-primary"
-                      />
-                      <span className="text-foreground">{act.summary}</span>
-                    </div>
-                    <span className="text-muted-foreground text-xs">
-                      {timeAgo(act.time)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">快捷操作</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <Link
-              href="/admin/chuli/new"
-              className="quick-action"
-            >
-              <Plus size={16} />
-              新建樗栎集文章
-            </Link>
-            <Link
-              href="/admin/chuli/import"
-              className="quick-action"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              批量导入樗栎集
-            </Link>
-            <Link
-              href="/admin/jigu-tai"
-              className="quick-action"
-            >
-              <Sparkles size={16} />
-              辑古台 AI 生成
-            </Link>
-            <Link
-              href="/admin/api-config"
-              className="quick-action"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-              管理 LLM API 配置
-            </Link>
-          </CardContent>
-        </Card>
+      {/* 快捷入口 */}
+      <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "闲吟录", desc: "智能解析与创作", href: "/admin/xianyin", icon: Sparkles },
+          { label: "辑古台", desc: "导入经典篇目", href: "/admin/jigu-tai", icon: BookOpen },
+          { label: "读音审校", desc: "通假字词典管理", href: "/admin/pinyin-dict", icon: Volume2 },
+          { label: "审计报告", desc: "馆藏数据统计", href: "/admin/audit", icon: FileText },
+        ].map(item => (
+          <Link
+            key={item.label}
+            href={item.href}
+            className="bg-white border border-paper-200 rounded-xl p-4 hover:shadow-sm hover:border-paper-300 transition-all group"
+          >
+            <item.icon size={18} className="text-ink-400 group-hover:text-accent transition-colors mb-2" />
+            <p className="text-sm font-medium text-ink-700">{item.label}</p>
+            <p className="text-xs text-ink-400 mt-0.5">{item.desc}</p>
+          </Link>
+        ))}
       </div>
     </div>
-  )
+  );
 }
