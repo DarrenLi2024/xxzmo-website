@@ -124,24 +124,53 @@ export default function XianyinPage() {
     setArticles(null);
 
     try {
-      const apiUrl = parseMode === "ai" ? "/api/admin/xianyin/ai-parse" : "/api/admin/xianyin/parse";
-      const body = parseMode === "ai"
-        ? { text: text.trim() }
-        : { text: text.trim() };
+      if (parseMode === "ai") {
+        // AI 模式：前端分批调用，避免 Vercel 10s 超时
+        const clean = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const CHUNK = 5000;
+        const chunks: string[] = [];
+        for (let i = 0; i < clean.length; i += CHUNK) {
+          chunks.push(clean.slice(i, Math.min(i + CHUNK, clean.length)));
+        }
 
-      const res = await fetch(apiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+        const allArticles: ParsedArticle[] = [];
+        for (let i = 0; i < chunks.length; i++) {
+          const res = await fetch("/api/admin/xianyin/ai-parse", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: chunks[i], chunkIndex: i, totalChunks: chunks.length }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            allArticles.push(...(data.articles || []));
+          }
+        }
 
-      if (res.ok) {
-        const data = await res.json();
-        setArticles(data.articles.map((a: ParsedArticle) => ({ ...a, selected: true })));
-        success(`解析完成：${data.articles.length} 篇 (${data.strategy || parseMode})`);
+        // 去重
+        const seen = new Set<string>();
+        const deduped = allArticles.filter(a => {
+          const key = a.title + a.body.slice(0, 60);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setArticles(deduped.map(a => ({ ...a, selected: true })));
+        success(`解析完成：${deduped.length} 篇 (${chunks.length}批)`);
       } else {
-        const data = await res.json();
-        toastError(data.error || "解析失败");
+        // 规则模式：单次调用
+        const res = await fetch("/api/admin/xianyin/parse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: text.trim() }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setArticles(data.articles.map((a: ParsedArticle) => ({ ...a, selected: true })));
+          success(`解析完成：${data.articles.length} 篇`);
+        } else {
+          const data = await res.json();
+          toastError(data.error || "解析失败");
+        }
       }
     } catch {
       toastError("网络错误");
