@@ -173,15 +173,17 @@
     font-family: var(--font-noto-serif-sc), 'Noto Serif SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', 'STSong', serif;
     color: var(--color-ink-700);
     text-align: justify;
-    text-justify: inter-ideograph;
+    text-justify: auto;
     line-break: strict;
     word-break: keep-all;
     overflow-wrap: break-word;
-    hanging-punctuation: force-end allow-end;
-    letter-spacing: 0.025em;
+    hanging-punctuation: allow-end;
+    letter-spacing: 0.02em;
     line-height: 1.85;
     text-spacing: normal;
     text-autospace: normal;
+    text-align-last: start;
+    hyphens: none;
   }
 
   .prose-cn p {
@@ -532,12 +534,14 @@
 .plain-prose-body {
   text-wrap: wrap;
   text-align: justify;
-  text-justify: inter-ideograph;
+  text-justify: auto;
   line-break: strict;
   word-break: keep-all;
   overflow-wrap: break-word;
-  hanging-punctuation: force-end allow-end;
-  letter-spacing: 0.025em;
+  hanging-punctuation: allow-end;
+  letter-spacing: 0.02em;
+  text-align-last: start;
+  hyphens: none;
 }
 
 .plain-prose-body p {
@@ -560,14 +564,16 @@
 
 .indented-text {
   text-align: justify;
-  text-justify: inter-ideograph;
+  text-justify: auto;
   line-height: 1.85;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   line-break: strict;
   word-break: keep-all;
-  hanging-punctuation: force-end allow-end;
+  hanging-punctuation: allow-end;
   text-spacing: normal;
   text-autospace: normal;
+  text-align-last: start;
+  hyphens: none;
 }
 
 .indented-text p {
@@ -592,10 +598,11 @@
 
 .plain-prose-body.pinyin-mode {
   text-align: justify;
-  text-justify: inter-ideograph;
+  text-justify: auto;
   overflow-wrap: normal;
   word-break: keep-all;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  text-align-last: start;
 }
 
 .plain-prose-body.pinyin-mode p {
@@ -811,8 +818,10 @@
 
   .plain-prose-body {
     text-align: justify;
+    text-justify: auto;
     line-height: 1.7 !important;
-    letter-spacing: 0.025em;
+    letter-spacing: 0.02em;
+    text-align-last: start;
   }
 
   .plain-prose-body p {
