@@ -25,7 +25,9 @@ export const ADMIN_NAV_ITEMS = [
   { label: "系统设置", href: "/admin/settings", icon: "Settings" },
 ] as const;
 
-export const ARTICLE_TYPES = ["诗", "词", "曲", "文", "随笔", "日记"] as const;
+export const ARTICLE_TYPES = [
+  "诗", "词", "曲", "赋", "文", "联", "新诗", "打油诗", "四言", "六言", "杂言", "骚体", "长短句", "剧本", "朗诵稿", "随笔", "日记"
+] as const;
 export type ArticleType = (typeof ARTICLE_TYPES)[number];
 
 export const ARTICLE_STATUS = ["draft", "review", "published"] as const;

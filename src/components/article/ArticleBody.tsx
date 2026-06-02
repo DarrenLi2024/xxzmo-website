@@ -134,8 +134,11 @@ const defaultSmartLineBreak = (text: string, pinyinData: PinyinMapItem[], mode: 
 };
 
 function getLineBreakMode(source?: string, type?: string): LineBreakMode {
-  if (type === "文" || type === "赋" || type === "随笔" || type === "日记") return "plainProse";
-  if (source === "jigu" && type !== "诗" && type !== "词" && type !== "曲") return "plainProse";
+  // 散文类：自然换行，段落缩进
+  if (["文", "赋", "随笔", "日记", "联", "新诗", "剧本", "朗诵稿", "骚体"].includes(type || "")) return "plainProse";
+  // 辑古录中非诗词曲的视为散文
+  if (source === "jigu" && type && !["诗", "词", "曲"].includes(type)) return "plainProse";
+  // 诗词类、打油诗、四六言、长短句等保持诗歌模式（逐行独立）
   return "poetry";
 }
 
@@ -160,7 +163,7 @@ export function ArticleBody({ source, type, preface, body, postscript, notes, pi
           paragraphLines.map((lines, paraIndex) => (
             <React.Fragment key={paraIndex}>
               {/* 词牌/曲牌上下阕分隔符 */}
-              {paraIndex > 0 && (type === "词" || type === "曲") && lineBreakMode === "poetry" && (
+              {paraIndex > 0 && (type === "词" || type === "曲" || type === "骚体" || type === "赋") && lineBreakMode === "poetry" && (
                 <span className="ci-stanza-separator" aria-hidden="true">❖</span>
               )}
               <p className={lineBreakMode === "plainProse" ? "m-0" : "m-0 space-y-1.5 md:space-y-2"}>
