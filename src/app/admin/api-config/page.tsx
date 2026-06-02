@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect, useCallback } from "react";
 import { Wifi, Pencil, Check, X, Activity } from "lucide-react";
 import { useToast } from "@/components/admin/Toast";

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Suspense } from "react";
 import { HomeSections } from "@/components/home/HomeSections";
 import { DailyQuoteSection } from "@/components/home/DailyQuoteSection";

@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { Search, Plus, RefreshCw, CheckSquare, XSquare, Loader2, ImageIcon, Square } from "lucide-react";

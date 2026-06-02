@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect, useCallback } from "react";
 import { Trash2, Plus, Search, Pencil, Check, X, GitMerge } from "lucide-react";
 import { useToast } from "@/components/admin/Toast";
