@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { serializeArticleListItem } from "@/lib/serialize";
+import { HomeHero } from "./HomeHero";
+import { HomeTopicTabs } from "./HomeTopicTabs";
 import { HomeFeatured } from "./HomeFeatured";
-import { HomeTopicGroup } from "./HomeTopicGroup";
 import type { ArticleListItem } from "@/lib/serialize";
 
-// 主题分组定义：标签关键词 → 分组名
 const TOPIC_GROUPS: Record<string, { label: string; tags: string[] }> = {
   "节序时令": { label: "节序时令", tags: ["春节", "清明", "中秋", "重阳", "除夕", "立春", "春景", "秋景", "时令", "白露", "冬至", "元日", "上元"] },
   "怀古咏史": { label: "怀古咏史", tags: ["怀古", "咏史", "历史", "魏晋", "隋唐", "三国"] },
@@ -17,7 +17,6 @@ const TOPIC_GROUPS: Record<string, { label: string; tags: string[] }> = {
 };
 
 export async function HomeSections() {
-  // 获取全部已发布文章，按时间倒序
   const articles = await prisma.article.findMany({
     where: { status: "published" },
     include: { tags: { include: { tag: true } }, painting: true },
@@ -27,26 +26,34 @@ export async function HomeSections() {
 
   const list: ArticleListItem[] = articles.map(a => serializeArticleListItem(a, 120));
 
-  // 精选：有配图 + 已发布的前 4 篇
-  const featured = list.filter(a => a.painting).slice(0, 4);
+  // Hero: 最新一篇带配图的文章
+  const heroArticle = list.find(a => a.painting) || list[0];
 
-  // 各主题分组
+  // 精选: 剩余有配图的 4 篇
+  const featured = list.filter(a => a.painting && a.id !== heroArticle?.id).slice(0, 4);
+
+  // 主题分组
   const groups = Object.entries(TOPIC_GROUPS).map(([key, group]) => {
     const matched = list.filter(a =>
       a.tags.some(tag => group.tags.includes(tag))
-    ).slice(0, 3);
+    ).slice(0, 6);
     return { key, label: group.label, articles: matched };
   }).filter(g => g.articles.length > 0);
 
   return (
-    <div className="space-y-12">
-      {/* 精选推荐 */}
-      {featured.length >= 2 && <HomeFeatured articles={featured} />}
+    <div>
+      {/* Hero 每日精选 */}
+      {heroArticle && <HomeHero featured={heroArticle} />}
 
-      {/* 主题分组 */}
-      {groups.map(group => (
-        <HomeTopicGroup key={group.key} label={group.label} articles={group.articles} />
-      ))}
+      {/* 精选推荐（小卡片） */}
+      {featured.length >= 2 && (
+        <section className="mb-12">
+          <HomeFeatured articles={featured} />
+        </section>
+      )}
+
+      {/* 主题标签页 */}
+      {groups.length > 0 && <HomeTopicTabs groups={groups} />}
     </div>
   );
 }
