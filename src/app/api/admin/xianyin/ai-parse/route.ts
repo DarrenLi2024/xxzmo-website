@@ -1,8 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { runAiTask } from "@/lib/ai-task";
-import { xianyinParseSchema } from "@/lib/ai-schemas";
 import { XIANYIN_PARSE_PROMPT_VERSION } from "@/lib/prompts";
 
 interface ParsedArticle {
@@ -18,140 +17,95 @@ interface ParsedArticle {
   splitReason: string;
 }
 
-interface DuplicateItem {
-  original: string;
-  duplicate: string;
-  type: "exact" | "similar";
-  similarity: number;
-  diffSummary: string;
+// 每轮 LLM 调用的最大输入字符数（~8000 chars ≈ 4000-8000 tokens）
+const MAX_CHARS_PER_ROUND = 8000;
+// 重叠区：上一轮最后 300 字作为上下文传给下一轮，防止文章在边界被截断
+const OVERLAP_CHARS = 300;
+
+const systemPrompt = `你是古典诗文分篇专家。你的任务是从输入文本中，自上而下识别并提取所有独立的诗文篇目。
+
+输出 JSON：
+{
+  "articles": [
+    {
+      "title": "原标题",
+      "type": "诗/词/文/赋/随笔/日记",
+      "subType": "七绝/五律/浣溪沙/记/序 等",
+      "body": "完整正文(不含序跋)",
+      "preface": "序文(没有则空)",
+      "postscript": "跋文(没有则空)",
+      "confidence": 0.92,
+      "classificationReasons": ["判断依据"]
+    }
+  ],
+  "nextStartHint": "下一轮继续解析的起始短语（当本轮未处理完时提供；若已全部处理完毕则为空字符串）"
 }
 
-function calculateSimilarity(str1: string, str2: string): number {
-  const longer = str1.length;
-  const shorter = str2.length;
-  if (longer === 0) return 1.0;
-  const editDistance = levenshteinDistance(str1, str2);
-  return (longer - editDistance) / longer;
-}
+核心规则：
+1. 自上而下逐篇解析，不要跳篇
+2. 标题识别：诗文体·标题（如"七绝·思家"）、词牌名·标题（如"浣溪沙·春思"）、纯标题（如"秋日感怀"）、数字序号（如"其一""1."）
+3. 序文通常在标题后正文前，包含时间/背景/缘由等说明文字
+4. 跋文通常在正文后，包含评论/落款等
+5. 正文即诗歌/词/文的主体内容
+6. 如果本轮结束时还有大量未处理内容，设置 nextStartHint 为非空字符串（简短标记剩余文本的起始位置）
+7. 不要为了填满输出而合并不同篇目
 
-function levenshteinDistance(str1: string, str2: string): number {
-  const costs: number[] = [];
-  for (let i = 0; i <= str1.length; i++) {
-    let lastValue = i;
-    for (let j = 0; j <= str2.length; j++) {
-      if (i === 0) {
-        costs[j] = j;
-      } else if (j > 0) {
-        let newValue = costs[j - 1];
-        if (str1.charAt(i - 1) !== str2.charAt(j - 1)) {
-          newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
-        }
-        costs[j - 1] = lastValue;
-        lastValue = newValue;
-      }
-    }
-    if (i > 0) {
-      costs[str2.length] = lastValue;
-    }
-  }
-  return costs[str2.length];
-}
-
-function findDuplicates(articles: ParsedArticle[]): DuplicateItem[] {
-  const duplicates: DuplicateItem[] = [];
-  const n = articles.length;
-  
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const a1 = articles[i];
-      const a2 = articles[j];
-      
-      const fullText1 = `${a1.title}${a1.preface || ''}${a1.body}${a1.postscript || ''}`;
-      const fullText2 = `${a2.title}${a2.preface || ''}${a2.body}${a2.postscript || ''}`;
-      
-      const similarity = calculateSimilarity(fullText1, fullText2);
-      
-      if (similarity >= 0.85) {
-        duplicates.push({
-          original: a1.title,
-          duplicate: a2.title,
-          type: similarity >= 0.98 ? "exact" : "similar",
-          similarity,
-          diffSummary: similarity >= 0.98 
-            ? "内容完全相同" 
-            : `标题差异: ${a1.title !== a2.title ? '是' : '否'}`,
-        });
-      }
-    }
-  }
-  
-  return duplicates;
-}
+只输出 JSON。`;
 
 export async function POST(request: Request) {
   try {
     const { text } = await request.json();
 
-    if (!text || typeof text !== "string") {
+    if (!text?.trim()) {
       return NextResponse.json({ error: "请提供待解析的文本" }, { status: 400 });
     }
 
     const providers = await prisma.llmProvider.findMany({
       where: { enabled: true },
-      select: { id: true, name: true },
+      select: { id: true },
     });
-
     if (providers.length === 0) {
-      return NextResponse.json({
-        error: "未配置可用的 LLM Provider，无法使用 AI 分篇功能"
-      }, { status: 400 });
+      return NextResponse.json({ error: "未配置 LLM Provider" }, { status: 400 });
     }
 
-    // Stage 1: 规则预分割
-    const candidates = presplitByTitles(text);
-
-    // Stage 2: AI 分类精修（每批最多10篇）
-    const BATCH_SIZE = 10;
+    const cleanText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const allArticles: ParsedArticle[] = [];
+    let offset = 0;
+    let round = 0;
+    const maxRounds = 30; // 安全上限
 
-    for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
-      const batch = candidates.slice(i, i + BATCH_SIZE);
-      const batchText = batch.map((c, idx) =>
-        `[${idx + 1}] ${c.title}\n${c.body.slice(0, 600)}`
-      ).join('\n---\n');
+    while (offset < cleanText.length && round < maxRounds) {
+      round++;
 
-      const classifyPrompt = `你是古典文学分类专家。为每块判断体裁并提取序跋。只输出JSON。
+      // 截取本轮处理的文本
+      const chunkEnd = Math.min(offset + MAX_CHARS_PER_ROUND, cleanText.length);
+      const chunk = cleanText.slice(offset, chunkEnd);
 
-{
-  "items": [
-    {
-      "candidateIndex": 1,
-      "type": "诗/词/文/赋/随笔",
-      "subType": "七绝 或 五律 或词牌名 等",
-      "preface": "序文(没有则空)",
-      "postscript": "跋文(没有则空)",
-      "confidence": 0.9,
-      "classificationReasons": ["依据"]
-    }
-  ]
-}`;
+      // 构造用户消息：提示继续位置
+      const progressNote = round === 1
+        ? "请从文本开头开始，自上而下逐篇解析。"
+        : `请继续解析。这是第 ${round} 轮，从上一轮停止处接续。`;
+
+      const userMsg = `${progressNote}\n\n${chunk}`;
 
       const result = await runAiTask(
-        "xianyin.classify",
+        "xianyin.parse",
         [
-          { role: "system", content: classifyPrompt },
-          { role: "user", content: batchText },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMsg },
         ],
         z.object({
-          items: z.array(z.object({
-            candidateIndex: z.number().int().min(1),
+          articles: z.array(z.object({
+            title: z.string().default("无题"),
             type: z.string().default("诗"),
             subType: z.string().default(""),
+            body: z.string(),
             preface: z.string().default(""),
             postscript: z.string().default(""),
             confidence: z.number().min(0).max(1).default(0.85),
             classificationReasons: z.array(z.string()).default([]),
-          }))
+          })),
+          nextStartHint: z.string().default(""),
         }),
         {
           promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
@@ -160,28 +114,68 @@ export async function POST(request: Request) {
         }
       );
 
-      for (const item of result.data.items) {
-        const candidate = batch[item.candidateIndex - 1];
-        if (!candidate) continue;
+      const roundArticles = result.data.articles;
+      const hint = result.data.nextStartHint || "";
+
+      // 收集本轮解析的文章
+      for (const a of roundArticles) {
         allArticles.push({
-          id: `ai-s2-${Date.now()}-${item.candidateIndex}`,
-          title: candidate.title,
-          type: item.type,
-          subType: item.subType || undefined,
-          body: candidate.body,
-          preface: item.preface || undefined,
-          postscript: item.postscript || undefined,
-          confidence: item.confidence,
-          classificationReasons: item.classificationReasons,
-          splitReason: "规则预切 + AI分类",
+          id: `ai-r${round}-${Date.now()}-${allArticles.length}`,
+          title: a.title || "无题",
+          type: a.type || "诗",
+          subType: a.subType || undefined,
+          body: a.body,
+          preface: a.preface || undefined,
+          postscript: a.postscript || undefined,
+          confidence: a.confidence || 0.85,
+          classificationReasons: a.classificationReasons || [],
+          splitReason: `自上而下分批解析 · 第${round}轮`,
         });
+      }
+
+      // 计算下一轮的起始偏移
+      if (hint && hint.length > 0) {
+        // 在 chunk 中搜索 hint 的位置
+        const hintIdx = chunk.indexOf(hint);
+        if (hintIdx >= 0) {
+          offset = offset + hintIdx;
+        } else {
+          // 如果找不到 hint，则在 chunk 中向后搜索最后一个识别出的文章结尾
+          const lastArticle = roundArticles[roundArticles.length - 1];
+          if (lastArticle?.body) {
+            const bodyStart = chunk.lastIndexOf(lastArticle.body.slice(0, 60));
+            if (bodyStart >= 0) {
+              offset = offset + bodyStart + lastArticle.body.length;
+              // 向上对齐到最近的换行
+              while (offset < cleanText.length && cleanText[offset] !== "\n") offset++;
+            } else {
+              offset = chunkEnd - OVERLAP_CHARS;
+            }
+          } else {
+            offset = chunkEnd - OVERLAP_CHARS;
+          }
+        }
+      } else {
+        // 本轮已处理完所有文本
+        offset = cleanText.length;
+      }
+
+      // 防止死循环：如果 offset 没前进
+      if (offset < chunkEnd - OVERLAP_CHARS) {
+        // offset 异常，强制推进
+        offset = chunkEnd - OVERLAP_CHARS;
+      }
+
+      // 如果本轮没解析出任何文章且 hint 为空，结束
+      if (roundArticles.length === 0 && !hint) {
+        break;
       }
     }
 
     // 去重
     const seen = new Set<string>();
     const deduped = allArticles.filter(a => {
-      const key = a.title + a.body.slice(0, 30);
+      const key = a.title + a.body.slice(0, 40);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -190,64 +184,15 @@ export async function POST(request: Request) {
     return NextResponse.json({
       articles: deduped,
       count: deduped.length,
-      strategy: `规则预切(${candidates.length}) + AI分类(${allArticles.length})`,
+      rounds: round,
+      strategy: `自上而下分批解析 (${round}轮)`,
       confidence: 0.9,
       duplicates: [],
     }, { status: 200 });
 
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI 分篇失败";
+    console.error("AI parse error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
-}
-
-/** Stage 1: 纯规则预分割。识别所有标题行作为边界 */
-function presplitByTitles(text: string): Array<{ title: string; body: string }> {
-  const lines = text.split("\n");
-  const result: Array<{ title: string; body: string }> = [];
-  let currentTitle = "";
-  let currentBody: string[] = [];
-
-  const isTitle = (line: string): boolean => {
-    const t = line.trim();
-    if (!t || t.length > 25) return false;
-    return !!(
-      /^(五言绝句|七言绝句|五言律诗|七言律诗|五律|七律|五绝|七绝|古风|乐府|新诗|现代诗|词|曲|赋|文|记|序|书)[·.]/.test(t) ||
-      /^(如梦令|浣溪沙|蝶恋花|菩萨蛮|清平乐|西江月|忆秦娥|浪淘沙|虞美人|卜算子|临江仙|鹧鸪天|鹊桥仙|踏莎行|声声慢|念奴娇|水调歌头|满江红|沁园春|永遇乐|贺新郎|摸鱼儿|木兰花|采桑子|苏幕遮|破阵子|渔家傲|望海潮|雨霖铃|钗头凤|南乡子|玉楼春|定风波|江城子|一剪梅|霜天晓角|满庭芳|洞仙歌|八声甘州|点绛唇|谒金门|好事近|醉花阴|南歌子|眼儿媚|朝中措|柳梢青|风入松|行香子|千秋岁|天仙子|青玉案|桂枝香|水龙吟|齐天乐|何满子|六幺)[·.].*$/.test(t) ||
-      /^(如梦令|浣溪沙|蝶恋花|菩萨蛮|清平乐|西江月|忆秦娥|浪淘沙|虞美人|卜算子|临江仙|鹧鸪天|鹊桥仙|踏莎行|声声慢|念奴娇|水调歌头|满江红|沁园春|永遇乐|贺新郎|摸鱼儿|木兰花|采桑子|苏幕遮|破阵子|渔家傲|望海潮|雨霖铃|钗头凤|南乡子|玉楼春|定风波|江城子|一剪梅|霜天晓角|满庭芳|洞仙歌|八声甘州|点绛唇|谒金门|好事近|醉花阴|南歌子|眼儿媚|朝中措|柳梢青|风入松|行香子|千秋岁|天仙子|青玉案|桂枝香|水龙吟|齐天乐|何满子|六幺)$/.test(t) ||
-      /^(其[一二三四五六七八九十]+|[一二三四五六七八九十]+[、.]|\d+[、.])/.test(t) ||
-      /^.{2,12}(诗|词|曲|赋|记|序|书|论|说|表|铭|传|状|疏|议|启|笺|随笔|漫笔|琐记|杂记)$/.test(t)
-    );
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-
-    if (isTitle(line) && (i === 0 || !lines[i - 1]?.trim() || currentBody.length >= 3)) {
-      if (currentTitle || currentBody.length > 0) {
-        result.push({ title: currentTitle || "无题", body: currentBody.join("\n").trim() });
-      }
-      currentTitle = line;
-      currentBody = [];
-    } else {
-      currentBody.push(lines[i]);
-    }
-  }
-
-  if (currentTitle || currentBody.length > 0) {
-    result.push({ title: currentTitle || "无题", body: currentBody.join("\n").trim() });
-  }
-
-  // 合并小尾巴
-  const merged: Array<{ title: string; body: string }> = [];
-  for (const b of result) {
-    const last = merged[merged.length - 1];
-    if (last && b.body.length < 20 && b.title === "无题" && !last.title.includes("无题")) {
-      last.body += "\n" + (b.body || "");
-    } else {
-      merged.push(b);
-    }
-  }
-
-  return merged;
 }
