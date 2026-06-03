@@ -16,7 +16,7 @@ export function FooterContent({ site }: FooterContentProps) {
 
   return (
     <footer className="py-16 text-center">
-      <div className="mb-4 mx-auto w-16 h-px bg-paper-300" />
+      <div className="mb-4 mx-auto w-16 h-[2px] bg-accent/20" />
       <p className="text-sm text-ink-300 leading-relaxed">
         {site.name} · {site.signature}
       </p>

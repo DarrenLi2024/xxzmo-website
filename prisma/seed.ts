@@ -84,7 +84,7 @@ async function main() {
     });
   }
 
-  // 预设古画库（部分示例）
+  // 预设古画库（先查后插，避免重复 seed 报错）
   const paintings = [
     {
       title: "富春山居图",
@@ -124,7 +124,12 @@ async function main() {
   ];
 
   for (const painting of paintings) {
-    await prisma.painting.create({ data: painting });
+    const existing = await prisma.painting.findFirst({
+      where: { title: painting.title },
+    });
+    if (!existing) {
+      await prisma.painting.create({ data: painting });
+    }
   }
 
   console.log("Seed completed successfully.");

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -49,6 +49,13 @@ model Article {
   aiRawOutput String?
   confidence  Float?
   likeCount   Int       @default(0)
+
+  // === Indexes ===
+  @@index([status, createdAt])
+  @@index([source, status])
+  @@index([status, publishedAt])
+  @@index([paintingId])
+  @@index([createdAt])
 }
 
 model Tag {
@@ -67,6 +74,7 @@ model TagOnArticle {
   tagId     String
 
   @@id([articleId, tagId])
+  @@index([tagId])
 }
 
 model Painting {

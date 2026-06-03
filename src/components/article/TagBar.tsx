@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Hash } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -14,7 +15,7 @@ export function TagBar({ tags, className }: Props) {
 
   return (
     <div className={cn("flex items-center gap-1.5 flex-wrap", className)}>
-      <span className="text-ink-300 text-xs select-none">&#59157;</span>
+      <Hash size={14} className="text-ink-300" />
       {visible.map((tag) => (
         <Link
           key={tag}

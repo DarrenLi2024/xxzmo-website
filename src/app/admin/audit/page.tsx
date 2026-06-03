@@ -1,6 +1,5 @@
 "use client";
 
-export const dynamic = "force-dynamic";
 
 import { useState, useEffect } from "react";
 import { FileText, BookOpen, Tag, TrendingUp, Calendar, PieChart, Loader2 } from "lucide-react";

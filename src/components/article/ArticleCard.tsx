@@ -90,20 +90,17 @@ export function ArticleCard({
           </h3>
         </Link>
         <ArticleMeta type={type} author={author} dateRaw={dateRaw} className="mb-3 md:mb-4" />
-        <Link href={articleUrl} className="block no-underline">
-          <p className="text-sm md:text-base text-ink-500 mb-3 font-serif group-hover:text-ink-600 transition-colors duration-200" style={{lineHeight: 1.7, letterSpacing: '0.03em'}}>
-            {excerptText}
-            {hasMore && (
-              <Link
-                href={articleUrl}
-                className="inline-block ml-1 article-read-more transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                （阅读全文）
-              </Link>
-            )}
-          </p>
-        </Link>
+        <p className="text-sm md:text-base text-ink-500 mb-3 font-serif group-hover:text-ink-600 transition-colors duration-200" style={{lineHeight: 1.7, letterSpacing: '0.03em'}}>
+          {excerptText}
+          {hasMore && (
+            <Link
+              href={articleUrl}
+              className="inline-block ml-1 article-read-more transition-colors"
+            >
+              （阅读全文）
+            </Link>
+          )}
+        </p>
         <TagBar tags={tags} />
       </div>
     </article>

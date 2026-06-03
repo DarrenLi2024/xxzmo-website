@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Search, Tag, X } from "lucide-react";
+import { Search, Tag, Hash, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
 interface ArticleResult {
@@ -15,6 +15,26 @@ interface ArticleResult {
   dateRaw: string | null;
   body: string;
   tags: string[];
+}
+
+function SearchSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="bg-paper-50 border border-paper-200 rounded-lg p-4 space-y-3">
+          <div className="flex items-baseline gap-2">
+            <div className="h-5 w-32 bg-paper-200 rounded animate-pulse" />
+            <div className="h-4 w-12 bg-paper-200 rounded animate-pulse" />
+          </div>
+          <div className="h-3 w-48 bg-paper-200 rounded animate-pulse" />
+          <div className="space-y-2">
+            <div className="h-4 w-full bg-paper-200 rounded animate-pulse" />
+            <div className="h-4 w-3/4 bg-paper-200 rounded animate-pulse" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function SearchPage() {
@@ -109,13 +129,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {loading && (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-paper-100 rounded-lg animate-pulse" />
-          ))}
-        </div>
-      )}
+      {loading && <SearchSkeleton />}
 
       {!loading && searched && results.length > 0 && (
         <>
@@ -127,7 +141,7 @@ export default function SearchPage() {
               <Link
                 key={article.id}
                 href={`/${article.source === "jigu" ? "jigu" : "chuli"}/${article.slug}`}
-                className="block bg-paper-50 border border-paper-200 rounded-lg p-4 no-underline hover:shadow-md transition-all hover:-translate-y-0.5"
+                className="block bg-paper-50 border border-paper-200 rounded-lg p-4 no-underline hover:shadow-md transition-shadow"
               >
                 <div className="flex items-baseline gap-2 mb-1">
                   <h3 className="text-base font-medium text-ink-900">{article.title}</h3>
@@ -150,12 +164,14 @@ export default function SearchPage() {
 
       {!loading && searched && results.length === 0 && (
         <div className="py-16 text-center">
+          <Hash size={36} className="text-ink-200 mx-auto mb-4" strokeWidth={1.5} />
           <p className="text-ink-300 font-kai text-lg">此间无踪迹</p>
         </div>
       )}
 
       {!searched && !loading && (
         <div className="py-16 text-center">
+          <Search size={36} className="text-ink-200 mx-auto mb-4" strokeWidth={1.5} />
           <p className="text-ink-300 font-kai text-base">输入关键词开始搜索</p>
         </div>
       )}

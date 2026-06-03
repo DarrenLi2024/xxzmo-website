@@ -53,7 +53,7 @@ export function Header() {
               >
                 {item.label}
                 {(pathname === item.href || pathname.startsWith(item.href + "/")) && (
-                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-accent rounded-full" />
+                  <span className="absolute -bottom-1 left-[calc(50%-0.5rem)] w-4 h-0.5 bg-accent rounded-full" />
                 )}
               </Link>
             ))}

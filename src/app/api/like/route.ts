@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { checkRateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit";
+import { checkRateLimit, rateLimitKey, rateLimitResponse, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   // Rate limit: 10 likes per minute per IP
@@ -15,25 +15,46 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid slug" }, { status: 400 });
   }
 
+  if (action !== "like" && action !== "unlike") {
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  }
+
   const article = await prisma.article.findFirst({ where: { slug, status: "published" } });
   if (!article) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (action === "like") {
-    await prisma.article.update({
-      where: { id: article.id },
-      data: { likeCount: { increment: 1 } },
-    });
-    return NextResponse.json({ slug, likeCount: article.likeCount + 1 });
+  // Dedup: prevent duplicate likes from the same IP for the same article
+  // Rate-limit 1 like per IP per article per 24 hours
+  const clientIp = getClientIp(request);
+  const dedupKey = `like:${clientIp}:${article.id}`;
+  const dedupCheck = checkRateLimit(dedupKey, 1, 1000 * 60 * 60 * 24);
+
+  if (action === "like" && !dedupCheck.allowed) {
+    return NextResponse.json({ slug, likeCount: article.likeCount, alreadyLiked: true });
   }
 
-  if (action === "unlike" && article.likeCount > 0) {
-    await prisma.article.update({
+  if (action === "unlike" && dedupCheck.allowed) {
+    return NextResponse.json({ slug, likeCount: article.likeCount });
+  }
+
+  // Atomic increment / decrement with a floor of 0
+  if (action === "like") {
+    const updated = await prisma.article.update({
       where: { id: article.id },
-      data: { likeCount: { decrement: 1 } },
+      data: { likeCount: { increment: 1 } },
+      select: { likeCount: true },
     });
-    return NextResponse.json({ slug, likeCount: article.likeCount - 1 });
+    return NextResponse.json({ slug, likeCount: updated.likeCount });
+  }
+
+  if (action === "unlike") {
+    const updated = await prisma.article.update({
+      where: { id: article.id, likeCount: { gt: 0 } },
+      data: { likeCount: { decrement: 1 } },
+      select: { likeCount: true },
+    });
+    return NextResponse.json({ slug, likeCount: updated.likeCount });
   }
 
   return NextResponse.json({ slug, likeCount: article.likeCount });

@@ -383,7 +383,7 @@
     border-right: 1px solid var(--sidebar-border);
     display: flex;
     flex-direction: column;
-    transition: all 0.3s;
+    transition: transform 0.25s ease, width 0.25s ease;
     z-index: 30;
   }
 
@@ -394,7 +394,7 @@
   .admin-main {
     margin-left: 15rem;
     min-height: 100vh;
-    transition: all 0.3s;
+    transition: transform 0.25s ease, width 0.25s ease;
   }
 
   .admin-main.collapsed {
@@ -912,4 +912,65 @@
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+/* ========================================
+   暗黑模式卡片 elevation 补偿
+   阴影在暗色背景下不可见，改用 border/ring
+   ======================================== */
+.dark .admin-card {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.dark .admin-card:hover {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.dark .shadow-sm {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.dark .shadow-md {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.dark .shadow-lg {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.dark .hover\:shadow-sm:hover {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.dark .hover\:shadow-md:hover {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.dark .hover\:shadow-lg:hover {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+/* ========================================
+   偏好减少动画 (Accessibility)
+   ======================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
+  .admin-sidebar,
+  .admin-main {
+    transition: none !important;
+  }
+
+  .stat-card:hover {
+    transform: none;
+  }
 }

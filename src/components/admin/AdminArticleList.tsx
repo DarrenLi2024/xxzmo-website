@@ -12,7 +12,7 @@ import {
   Search,
   CheckSquare,
   XSquare,
-  Pencil,
+  Pencil, PenLine,
   Trash2,
   Send,
   Loader2,
@@ -685,7 +685,7 @@ export function AdminArticleList({
           </div>
 
           {articles.length === 0 ? (
-            <EmptyState icon="📝" title={emptyText} />
+            <EmptyState icon={PenLine} title={emptyText} />
           ) : (
             <div className="divide-y divide-border">
               {filteredArticles.map((a) => (

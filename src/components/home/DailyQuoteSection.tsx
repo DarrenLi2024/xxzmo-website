@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { X } from "lucide-react";
+import { X, Quote } from "lucide-react";
 import Link from "next/link";
 import { useDailyQuote } from "@/hooks/useApi";
-import { Card, Body, Caption } from "@/components/design-system";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface DailyQuote {
   content: string;
@@ -15,11 +15,51 @@ interface DailyQuote {
 
 export function DailyQuoteSection() {
   const [modalOpen, setModalOpen] = useState(false);
-  const { data: quote } = useDailyQuote() as { data: DailyQuote | undefined };
+  const { data: quote, isLoading, isError } = useDailyQuote() as {
+    data: DailyQuote | undefined;
+    isLoading: boolean;
+    isError: boolean;
+  };
 
   const close = useCallback(() => setModalOpen(false), []);
 
-  const content = quote?.content || "待山房主人挥毫...";
+  // Loading state
+  if (isLoading) {
+    return (
+      <section className="text-center">
+        <div className="max-w-lg mx-auto p-8">
+          <Skeleton className="h-8 w-3/4 mx-auto rounded animate-pulse" />
+          <Skeleton className="h-4 w-1/2 mx-auto mt-4 rounded animate-pulse" />
+        </div>
+      </section>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <section className="text-center">
+        <div className="max-w-lg mx-auto p-8">
+          <Quote size={24} className="text-ink-200 mx-auto mb-3" />
+          <p className="text-ink-300 font-kai text-base">名言暂未就绪</p>
+          <p className="text-xs text-ink-300 mt-1">山房正在准备中，稍后再来</p>
+        </div>
+      </section>
+    );
+  }
+
+  const content = quote?.content || "";
+  if (!content) {
+    return (
+      <section className="text-center">
+        <div className="max-w-lg mx-auto p-8">
+          <Quote size={24} className="text-ink-200 mx-auto mb-3" />
+          <p className="text-ink-300 font-kai text-base">待山房主人挥毫...</p>
+        </div>
+      </section>
+    );
+  }
+
   const sourceLabel =
     quote?.source === "from_collection"
       ? "樗栎集"
@@ -30,22 +70,24 @@ export function DailyQuoteSection() {
   return (
     <>
       <section className="text-center animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
-        <Card variant="elevated" className="max-w-lg mx-auto p-8">
-          <Body className="font-kai text-lg text-ink-700 leading-loose">
+        <div className="max-w-lg mx-auto p-8 bg-white rounded-2xl border border-paper-200 shadow-sm">
+          <p className="font-kai text-lg text-ink-700 leading-loose">
             &ldquo;{content}&rdquo;
-          </Body>
+          </p>
           {sourceLabel && (
-            <Caption className="mt-4">
+            <p className="text-xs text-ink-400 mt-4">
               —— {sourceLabel}
-            </Caption>
+            </p>
           )}
-        </Card>
+        </div>
 
         <button
           onClick={() => setModalOpen(true)}
-          className="inline-block w-20 h-20 mt-8 rounded-full border-2 border-paper-300 hover:border-ink-300 transition-all duration-300 hover:scale-105 bg-paper-200 cursor-pointer animate-pulse-soft"
-          aria-label="查看名句"
-        />
+          className="inline-flex items-center justify-center w-20 h-20 mt-8 rounded-full border-2 border-paper-300 hover:border-ink-300 transition-all duration-300 hover:scale-105 bg-paper-200 cursor-pointer"
+          aria-label="查看名句详情"
+        >
+          <Quote size={24} className="text-ink-400" />
+        </button>
       </section>
 
       {modalOpen && (
@@ -54,7 +96,7 @@ export function DailyQuoteSection() {
           onClick={close}
         >
           <div
-            className="relative bg-white rounded border border-paper-200 shadow-md p-10 max-w-md w-full mx-4 text-center animate-scale-in"
+            className="relative bg-white rounded-lg border border-paper-200 shadow-lg p-10 max-w-md w-full mx-4 text-center animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -64,15 +106,15 @@ export function DailyQuoteSection() {
               <X size={18} />
             </button>
 
-            <Body className="font-kai text-xl text-ink-700 leading-loose mb-4">
+            <p className="font-kai text-xl text-ink-700 leading-loose mb-4">
               &ldquo;{content}&rdquo;
-            </Body>
-            <Caption className="mb-2">
+            </p>
+            <p className="text-xs text-ink-400 mb-2">
               {sourceLabel && `出自：${sourceLabel}`}
-            </Caption>
-            <Caption className="text-ink-300 mb-8">
-              {quote?.source === "from_collection" ? "来源：樗栎集" : "来源：AI 生成"}
-            </Caption>
+            </p>
+            <p className="text-xs text-ink-300 mb-8">
+              {quote?.source === "from_collection" ? "来源：樗栎集" : "AI 生成"}
+            </p>
 
             <Link
               href="/about"
