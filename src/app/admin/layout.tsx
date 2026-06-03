@@ -1,8 +1,7 @@
 import { Metadata } from "next";
-import { headers } from "next/headers";
 import { AdminLayoutClient } from "@/components/layout/AdminLayout";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 0; // ISR on-demand only — admin pages pre-render at build time
 
 export const metadata: Metadata = {
   title: { default: "管理后台", template: "%s | 闲心子墨" },
