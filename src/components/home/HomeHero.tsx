@@ -28,9 +28,16 @@ export function HomeHero({ featured }: { featured: ArticleListItem }) {
             priority
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-amber-100/30 via-paper-50 to-accent-bg/50" />
+          <div className="w-full h-full bg-paper-50">
+              <div className="absolute top-6 left-8 w-48 h-32 rounded-xl bg-rose-100/40 rotate-6" />
+              <div className="absolute top-20 right-10 w-40 h-28 rounded-xl bg-amber-100/50 -rotate-3" />
+              <div className="absolute bottom-10 left-12 w-56 h-36 rounded-xl bg-teal-100/30 rotate-2" />
+              <div className="absolute bottom-16 right-16 w-36 h-24 rounded-xl bg-indigo-100/40 -rotate-6" />
+              <div className="absolute top-1/2 left-1/3 w-44 h-20 rounded-xl bg-accent/10 -rotate-1" />
+              <div className="absolute inset-0 bg-gradient-to-t from-paper-50/80 via-transparent to-transparent" />
+            </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-ink-900/70 via-ink-900/10 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink-900/60 via-ink-900/5 to-transparent" />
         <div className="absolute inset-0 bg-ink-900/5" />
       </div>
 
