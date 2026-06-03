@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { BookOpen, PenLine, Sparkles, Volume2, FileText, TrendingUp, Activity, Loader2 } from "lucide-react";
+import { BookOpen, PenLine, Sparkles, Volume2, FileText, Loader2 } from "lucide-react";
 
 interface DashboardData {
   totalPublished: number;
@@ -52,7 +52,7 @@ export default function AdminDashboard() {
     { icon: BookOpen, label: "已发布", value: data.totalPublished, href: "/admin/chuli", color: "text-ink-900" },
     { icon: PenLine, label: "樗栎集", value: data.chuliCount, href: "/admin/chuli", color: "text-accent" },
     { icon: Sparkles, label: "辑古录", value: data.jiguCount, href: "/admin/jigu", color: "text-amber" },
-    { icon: Activity, label: "待处理", value: data.draftCount + data.reviewCount, href: "/admin/chuli", color: "text-sky-600" },
+    { icon: FileText, label: "待处理", value: data.draftCount + data.reviewCount, href: "/admin/chuli", color: "text-sky-600" },
   ];
 
   return (
