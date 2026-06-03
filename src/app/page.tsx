@@ -1,5 +1,3 @@
-export const dynamic = "force-dynamic";
-
 import { Suspense } from "react";
 import { getHomeStats, getHeroArticle, getFeaturedArticles, getTopicGroups } from "@/lib/home-queries";
 import { HomeGate } from "@/components/home/HomeGate";
@@ -7,6 +5,11 @@ import { HomeShowcase } from "@/components/home/HomeShowcase";
 import { HomeGarden } from "@/components/home/HomeGarden";
 import { DailyQuoteSection } from "@/components/home/DailyQuoteSection";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// ISR: revalidate every 60 seconds. On Vercel, this allows the page to be
+// pre-rendered at build time (when SQLite is available) and periodically
+// regenerated via on-demand revalidation or cron.
+export const revalidate = 60;
 
 // ============================================================
 // 首页三进式布局
