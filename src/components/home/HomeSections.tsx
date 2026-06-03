@@ -27,6 +27,7 @@ export async function HomeSections() {
   const list: ArticleListItem[] = articles.map(a => serializeArticleListItem(a, 120));
 
   // Hero: 最新一篇带配图的文章
+  // 优先选带配图的，没有则取第一篇
   const heroArticle = list.find(a => a.painting) || list[0];
 
   // 精选: 剩余有配图的 4 篇

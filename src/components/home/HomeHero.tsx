@@ -16,8 +16,8 @@ export function HomeHero({ featured }: { featured: ArticleListItem }) {
       href={`/${featured.source}/${featured.slug}`}
       className="group block relative overflow-hidden rounded-2xl mb-16"
     >
-      {/* 背景配图 */}
-      <div className="relative w-full aspect-[16/9] md:aspect-[21/9] overflow-hidden">
+      {/* 背景：优先配图，无图用渐变 */}
+      <div className="relative w-full aspect-[16/9] md:aspect-[21/9] overflow-hidden rounded-2xl">
         {featured.painting ? (
           <Image
             src={featured.painting.thumbnail || featured.painting.url}
@@ -28,9 +28,8 @@ export function HomeHero({ featured }: { featured: ArticleListItem }) {
             priority
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-paper-100 via-paper-50 to-accent-bg" />
+          <div className="w-full h-full bg-gradient-to-br from-amber-100/30 via-paper-50 to-accent-bg/50" />
         )}
-        {/* 遮罩 */}
         <div className="absolute inset-0 bg-gradient-to-t from-ink-900/70 via-ink-900/10 to-transparent" />
         <div className="absolute inset-0 bg-ink-900/5" />
       </div>
