@@ -1,0 +1,7 @@
+.agents/
+.claude/
+restart.sh
+test-connection.js
+node_modules/
+.next/
+coverage/
