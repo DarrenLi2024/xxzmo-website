@@ -66,7 +66,7 @@ export function ArticleCard({
   
   const { text: excerptText, hasMore } = generateExcerpt(body || "", 200);
 
-  const articleUrl = `/${source === "jigu" ? "jigu" : "chuli"}/${slug}`;
+  const articleUrl = `/${source}/${slug}`;
 
   return (
     <article className="group bg-white border border-paper-200 rounded overflow-hidden transition-shadow duration-300 hover:shadow-md">
