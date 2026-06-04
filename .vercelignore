@@ -1,5 +1,7 @@
 .agents/
 .claude/
+.env
+.env*.local
 restart.sh
 test-connection.js
 node_modules/
