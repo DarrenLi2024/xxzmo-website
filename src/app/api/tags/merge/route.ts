@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getAdminFromCookies } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    if (!(await getAdminFromCookies())) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { keepId, removeId } = await request.json();
 
     if (!keepId || !removeId) {

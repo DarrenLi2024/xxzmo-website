@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
     const status = validateEnum(body.status || "draft", ARTICLE_STATUS, "状态");
 
     const tags = validateTags(body.tags);
+    const paintingId = await validateLocalPaintingId(body.paintingId);
 
     const article = await createArticleWithTags({
       data: {
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
         postscript: validateOptionalString(body.postscript),
         notes: validateOptionalString(body.notes),
         status,
+        paintingId,
         tagList: tags.length > 0 ? JSON.stringify(tags) : "[]",
       },
     }, tags);
@@ -93,4 +95,17 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Create failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }
+}
+
+async function validateLocalPaintingId(value: unknown): Promise<string | null> {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") throw new Error("配图 ID 无效");
+  const painting = await prisma.painting.findUnique({
+    where: { id: value },
+    select: { id: true, url: true },
+  });
+  if (!painting || !painting.url.startsWith("/paintings/")) {
+    throw new Error("只能选择本地上传配图");
+  }
+  return painting.id;
 }

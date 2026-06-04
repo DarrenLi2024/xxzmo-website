@@ -32,6 +32,7 @@ const iconMap = {
   Plug,
   Settings,
   Search,
+  FileText,
 }
 
 const groups = [
@@ -51,7 +52,6 @@ const groups = [
     items: [
       { label: "辑古台", href: "/admin/jigu-tai", icon: "BookOpen" },
       { label: "辑古录管理", href: "/admin/jigu", icon: "Tags" },
-      { label: "雅风阁", href: "/admin/yafengge", icon: "Search" },
       { label: "配图库", href: "/admin/paintings", icon: "Image" },
     ],
   },

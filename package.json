@@ -6,7 +6,7 @@
     "dev": "next dev",
     "prebuild": "prisma generate",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3007",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "next typegen && tsc --noEmit",
     "db:generate": "prisma generate",
@@ -16,6 +16,9 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "minimatch": "^9.0.9"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

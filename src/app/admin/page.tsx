@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { BookOpen, PenLine, Sparkles, Volume2, FileText, Loader2 } from "lucide-react";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface DashboardData {
   totalPublished: number;
@@ -33,10 +34,12 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/admin/dashboard")
-      .then(r => r.json())
+    fetchJson<DashboardData>("/api/admin/dashboard")
       .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch((error) => {
+        console.error("[AdminDashboard] 加载失败:", error);
+        setLoading(false);
+      });
   }, []);
 
   if (loading) return (

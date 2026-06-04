@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Trash2, Upload, Loader2 } from "lucide-react";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface Painting {
   id: string;
@@ -26,11 +27,16 @@ export default function AdminPaintingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPaintings = useCallback(async () => {
-    const res = await fetch("/api/paintings");
-    const data = await res.json();
-    setPaintings(data);
-    setLoading(false);
-  }, []);
+    try {
+      const data = await fetchJson<Painting[]>("/api/paintings");
+      setPaintings(data);
+    } catch (error) {
+      console.error("[AdminPaintingsPage] 获取配图失败:", error);
+      toastError("配图加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [toastError]);
 
   useEffect(() => { fetchPaintings(); }, [fetchPaintings]);
 
@@ -40,20 +46,15 @@ export default function AdminPaintingsPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("/api/paintings", {
+      await fetchJson("/api/paintings", {
         method: "POST",
         body: formData,
       });
 
-      if (res.ok) {
-        success("配图上传成功");
-        fetchPaintings();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        toastError(data.error || "上传失败");
-      }
-    } catch {
-      toastError("网络错误，请重试");
+      success("配图上传成功");
+      fetchPaintings();
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "网络错误，请重试");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -68,15 +69,11 @@ export default function AdminPaintingsPage() {
       onConfirm: async () => {
         setDeleting(painting.id);
         try {
-          const res = await fetch(`/api/paintings?id=${painting.id}`, { method: "DELETE" });
-          if (res.ok) {
-            success("配图已删除");
-            fetchPaintings();
-          } else {
-            toastError("删除失败");
-          }
-        } catch {
-          toastError("网络错误，请重试");
+          await fetchJson(`/api/paintings?id=${painting.id}`, { method: "DELETE" });
+          success("配图已删除");
+          fetchPaintings();
+        } catch (error) {
+          toastError(error instanceof Error ? error.message : "网络错误，请重试");
         } finally {
           setDeleting(null);
         }
@@ -89,7 +86,7 @@ export default function AdminPaintingsPage() {
       <div>
         <h2 className="text-2xl font-serif text-ink-900 mb-8">配图库</h2>
         <div className="grid grid-cols-3 gap-4">
-          {[1,2,3].map(i => <div key={i} className="h-32 bg-paper-200 rounded-lg animate-pulse" />)}
+          {[1,2,3].map(i => <div key={i} className="aspect-[17/7] bg-paper-200 rounded-lg animate-pulse" />)}
         </div>
       </div>
     );
@@ -130,7 +127,7 @@ export default function AdminPaintingsPage() {
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {paintings.map((p) => (
             <div key={p.id} className="relative bg-paper-50 border border-paper-200 rounded-lg p-4 hover:shadow-md transition-all group">
-              <div className="h-28 bg-gradient-to-br from-paper-100 to-paper-200 rounded mb-3 overflow-hidden relative">
+              <div className="aspect-[17/7] bg-gradient-to-br from-paper-100 to-paper-200 rounded mb-3 overflow-hidden relative">
                 <Image
                   src={p.url}
                   alt={p.title}

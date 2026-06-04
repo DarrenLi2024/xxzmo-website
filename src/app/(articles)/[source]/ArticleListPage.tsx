@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ArticleCard } from "@/components/article/ArticleCard";
 import { TypeTabBar } from "@/components/common/TypeTabBar";
+import { fetchJson } from "@/lib/fetch-json";
 import type { ArticleListItem } from "@/lib/serialize";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -39,9 +40,11 @@ export function ArticleListPage({ source }: { source: string }) {
       const params = new URLSearchParams();
       if (tag) params.set("tag", tag);
       params.set("pageSize", "200");
-      const res = await fetch(`/api/articles?source=${source}&${params.toString()}`);
-      const data = await res.json();
+      const data = await fetchJson<{ articles: ArticleListItem[] }>(`/api/articles?source=${source}&${params.toString()}`);
       setArticles(data.articles);
+    } catch (error) {
+      console.error("[ArticleListPage] 获取文章失败:", error);
+      setArticles([]);
     } finally {
       setLoading(false);
     }

@@ -91,7 +91,11 @@ export async function getHomeStats(): Promise<HomeStats> {
  */
 export async function getHeroArticle(): Promise<HeroArticle | null> {
   const article = await prisma.article.findFirst({
-    where: { status: "published", paintingId: { not: null } },
+    where: {
+      status: "published",
+      paintingId: { not: null },
+      painting: { is: { url: { startsWith: "/paintings/" } } },
+    },
     orderBy: { createdAt: "desc" },
     select: heroSelect,
   });
@@ -108,6 +112,7 @@ export async function getFeaturedArticles(excludeId?: string): Promise<FeaturedA
     where: {
       status: "published",
       paintingId: { not: null },
+      painting: { is: { url: { startsWith: "/paintings/" } } },
       ...(excludeId ? { id: { not: excludeId } } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -164,39 +169,41 @@ export async function getTopicGroups(): Promise<TopicGroup[]> {
 // ============================================================
 
 function serializeHeroArticle(a: any): HeroArticle {
+  const painting = serializeLocalPainting(a.painting);
   return {
     id: a.id, slug: a.slug, title: a.title, author: a.author, source: a.source,
     type: a.type, body: a.body, createdAt: a.createdAt, publishedAt: a.publishedAt,
     status: a.status,
     tags: a.tags.map((t: any) => t.tag.name),
-    painting: a.painting ? {
-      ...a.painting,
-      tags: parseStringArray(a.painting.tags),
-    } : null,
+    painting,
   };
 }
 
 function serializeFeaturedArticle(a: any): FeaturedArticle {
+  const painting = serializeLocalPainting(a.painting);
   return {
     id: a.id, slug: a.slug, title: a.title, author: a.author, source: a.source,
     type: a.type, body: a.body,
     tags: a.tags.map((t: any) => t.tag.name),
-    painting: a.painting ? {
-      ...a.painting,
-      tags: parseStringArray(a.painting.tags),
-    } : null,
+    painting,
   };
 }
 
 function serializeTopicArticle(a: any): TopicArticle {
+  const painting = serializeLocalPainting(a.painting);
   return {
     id: a.id, slug: a.slug, title: a.title, source: a.source,
     type: a.type, body: a.body, createdAt: a.createdAt,
     tags: a.tags.map((t: any) => t.tag.name),
-    painting: a.painting ? {
-      ...a.painting,
-      tags: parseStringArray(a.painting.tags),
-    } : null,
+    painting,
+  };
+}
+
+function serializeLocalPainting(painting: any) {
+  if (!painting || typeof painting.url !== "string" || !painting.url.startsWith("/paintings/")) return null;
+  return {
+    ...painting,
+    tags: parseStringArray(painting.tags),
   };
 }
 

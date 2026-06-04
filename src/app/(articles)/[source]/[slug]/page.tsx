@@ -14,8 +14,12 @@ interface Props {
 export const dynamicParams = true;
 export const revalidate = 60;
 
-export function generateStaticParams() {
-  return [] as { source: string; slug: string }[];
+export async function generateStaticParams() {
+  const articles = await prisma.article.findMany({
+    where: { status: "published" },
+    select: { source: true, slug: true },
+  });
+  return articles.map((a) => ({ source: a.source, slug: a.slug }));
 }
 
 async function getArticle(source: string, slug: string) {
@@ -97,7 +101,7 @@ export default async function ArticleDetailPage({ params }: Props) {
 
   const annotations = parseAnnotations(article.annotations);
 
-  const painting = article.painting
+  const painting = article.painting?.url.startsWith("/paintings/")
     ? { ...article.painting, tags: parseStringArray(article.painting.tags) }
     : null;
 
@@ -132,7 +136,7 @@ export default async function ArticleDetailPage({ params }: Props) {
       {painting && (
         <div className="article-painting mt-10 pt-6 border-t border-paper-200">
           <figure className="mt-4">
-            <div className="aspect-21/9 w-full overflow-hidden rounded bg-paper-100 relative">
+            <div className="aspect-[17/7] w-full overflow-hidden rounded bg-paper-100 relative">
               <Image
                 src={painting.thumbnail || painting.url}
                 alt={painting.title}
@@ -145,7 +149,7 @@ export default async function ArticleDetailPage({ params }: Props) {
             </div>
             <figcaption className="text-xs text-ink-400 mt-2 text-center">
               配图：{painting.title}{painting.artist ? ` · ${painting.artist}` : ""}{painting.dynasty ? ` (${painting.dynasty})` : ""}
-              <span className="ml-2 text-ink-300">图片来源：大都会艺术博物馆</span>
+              <span className="ml-2 text-ink-300">本地上传配图</span>
             </figcaption>
           </figure>
         </div>

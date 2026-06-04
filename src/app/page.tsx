@@ -1,25 +1,14 @@
 import { Suspense } from "react";
 import { getHomeStats, getHeroArticle, getFeaturedArticles, getTopicGroups } from "@/lib/home-queries";
-import { HomeGate } from "@/components/home/HomeGate";
-import { HomeShowcase } from "@/components/home/HomeShowcase";
-import { HomeGarden } from "@/components/home/HomeGarden";
+import { BlogHero } from "@/components/home/BlogHero";
+import { BlogFeed } from "@/components/home/BlogFeed";
+import { BlogTopicGarden } from "@/components/home/BlogTopicGarden";
 import { DailyQuoteSection } from "@/components/home/DailyQuoteSection";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// ISR: revalidate every 60 seconds. On Vercel, this allows the page to be
-// pre-rendered at build time (when SQLite is available) and periodically
-// regenerated via on-demand revalidation or cron.
 export const revalidate = 60;
 
-// ============================================================
-// 首页三进式布局
-// 一进·门厅 — 品牌声明 + 双源入口
-// 二进·正堂 — 精选荐读 + 作者引力
-// 三进·后院 — 主题花园 + 名言收束
-// ============================================================
-
 export default async function HomePage() {
-  // Sequential: hero first, then featured can exclude hero
   const [stats, hero] = await Promise.all([
     getHomeStats(),
     getHeroArticle(),
@@ -32,59 +21,71 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#FAF8F5" }}>
-      <div className="max-w-4xl mx-auto px-4 py-8 md:py-12">
-        {/* 一进 · 门厅 */}
-        <HomeGate stats={stats} />
-
-        {/* 二进 · 正堂 */}
+      <div className="max-w-5xl mx-auto px-4 py-6 md:py-10">
+        {/* Hero — 沉浸式主视觉 */}
         {hero ? (
-          <Suspense fallback={<ShowcaseSkeleton />}>
-            <HomeShowcase hero={hero} featured={featured} />
-          </Suspense>
+          <BlogHero hero={hero} stats={stats} />
         ) : (
-          <ShowcaseEmpty />
+          <HeroEmpty stats={stats} />
         )}
 
-        {/* 名言过渡 */}
-        <div className="mb-20">
-          <Suspense fallback={<Skeleton className="h-24 w-full rounded-xl" />}>
-            <DailyQuoteSection />
+        {/* 近作 — 卡片网格 */}
+        {featured.length > 0 && (
+          <Suspense fallback={<FeedSkeleton />}>
+            <BlogFeed articles={featured} />
           </Suspense>
-        </div>
+        )}
 
-        {/* 三进 · 后院 */}
+        {/* 主题花园 — 胶囊导航 + 分组卡片 */}
         {groups.length > 0 && (
           <Suspense fallback={<GardenSkeleton />}>
-            <HomeGarden groups={groups} />
+            <BlogTopicGarden groups={groups} />
           </Suspense>
         )}
+
+        {/* 每日一句 — 底部收束 */}
+        <Suspense fallback={<Skeleton className="h-24 w-full rounded-xl" />}>
+          <DailyQuoteSection />
+        </Suspense>
       </div>
     </div>
   );
 }
 
-// ============================================================
-// 降级骨架屏
-// ============================================================
+// === 降级占位 ===
 
-function ShowcaseSkeleton() {
+function HeroEmpty({ stats }: { stats: Awaited<ReturnType<typeof getHomeStats>> }) {
+  const daysAgo = stats.recentUpdatedAt
+    ? Math.max(1, Math.floor((Date.now() - stats.recentUpdatedAt.getTime()) / (1000 * 60 * 60 * 24)))
+    : null;
+
   return (
-    <section className="mb-20">
-      <div className="h-4 w-20 bg-paper-200 rounded mb-6 animate-pulse" />
-      <div className="grid grid-cols-1 md:grid-cols-8 gap-4 md:gap-6">
-        <div className="md:col-span-5">
-          <div className="aspect-[4/3] bg-paper-200 rounded-2xl animate-pulse" />
-          <div className="p-6 space-y-3">
-            <div className="h-4 w-16 bg-paper-200 rounded animate-pulse" />
-            <div className="h-6 w-3/4 bg-paper-200 rounded animate-pulse" />
-            <div className="h-4 w-full bg-paper-200 rounded animate-pulse" />
-          </div>
+    <section className="relative overflow-hidden rounded-2xl mb-16 md:mb-24">
+      <div className="relative w-full aspect-[17/7] overflow-hidden rounded-2xl bg-gradient-to-br from-ink-700 via-ink-800 to-ink-900">
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+          <p className="text-white/70 text-xs md:text-sm font-kai tracking-[0.3em] mb-3">
+            樗栎本无用，天地一散人
+          </p>
+          <h1 className="text-4xl md:text-6xl font-serif text-white tracking-[0.15em]">
+            闲心子墨
+          </h1>
+          <p className="mt-6 text-white/40 text-sm font-kai">
+            {daysAgo ? `${daysAgo} 天前更新 · ` : ""}共 {stats.totalPublished} 篇诗文
+          </p>
         </div>
-        <div className="md:col-span-3 space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-20 bg-paper-200 rounded-xl animate-pulse" />
-          ))}
-        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeedSkeleton() {
+  return (
+    <section className="mb-16 md:mb-24">
+      <div className="h-4 w-12 bg-paper-200 rounded mb-6 animate-pulse" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div className="col-span-2 row-span-2 aspect-[17/7] bg-paper-200 rounded-2xl animate-pulse" />
+        <div className="aspect-[17/7] bg-paper-200 rounded-2xl animate-pulse" />
+        <div className="aspect-[17/7] bg-paper-200 rounded-2xl animate-pulse" />
       </div>
     </section>
   );
@@ -92,22 +93,18 @@ function ShowcaseSkeleton() {
 
 function GardenSkeleton() {
   return (
-    <section className="mb-20">
-      <div className="h-4 w-24 bg-paper-200 rounded mb-6 animate-pulse" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-          <div key={i} className="h-40 bg-paper-200 rounded-2xl animate-pulse" />
+    <section className="mb-16 md:mb-24">
+      <div className="h-4 w-20 bg-paper-200 rounded mb-6 animate-pulse" />
+      <div className="flex gap-2 mb-6">
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="h-8 w-16 bg-paper-200 rounded-full animate-pulse" />
         ))}
       </div>
-    </section>
-  );
-}
-
-function ShowcaseEmpty() {
-  return (
-    <section className="mb-20 py-16 text-center">
-      <p className="text-ink-300 font-kai text-lg">暂无荐读</p>
-      <p className="text-xs text-ink-300 mt-2">待山房主人发布第一篇诗文</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-24 bg-paper-200 rounded-xl animate-pulse" />
+        ))}
+      </div>
     </section>
   );
 }

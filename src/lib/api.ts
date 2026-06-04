@@ -1,3 +1,5 @@
+import { readJson } from "@/lib/fetch-json";
+
 const API_BASE = "";
 
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
@@ -9,12 +11,7 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
     },
   });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "请求失败" }));
-    throw new Error(error.error || `HTTP ${response.status}`);
-  }
-
-  return response.json();
+  return readJson<T>(response);
 }
 
 export const api = {
@@ -36,10 +33,10 @@ export const api = {
 
   tags: {
     list: () => fetchApi("/api/tags"),
-    merge: (source: string, target: string) =>
+    merge: (keepId: string, removeId: string) =>
       fetchApi("/api/tags/merge", {
         method: "POST",
-        body: JSON.stringify({ source, target }),
+        body: JSON.stringify({ keepId, removeId }),
       }),
   },
 
@@ -51,11 +48,6 @@ export const api = {
       const query = searchParams.toString();
       return fetchApi(`/api/paintings${query ? `?${query}` : ""}`);
     },
-    search: (q: string) =>
-      fetchApi("/api/admin/paintings/search", {
-        method: "POST",
-        body: JSON.stringify({ query: q }),
-      }),
   },
 
   dailyQuote: {
@@ -67,10 +59,15 @@ export const api = {
   },
 
   like: {
-    toggle: (articleId: string) =>
+    toggle: (slug: string) =>
       fetchApi("/api/like", {
         method: "POST",
-        body: JSON.stringify({ articleId }),
+        body: JSON.stringify({ slug, action: "like" }),
+      }),
+    set: (slug: string, action: "like" | "unlike") =>
+      fetchApi("/api/like", {
+        method: "POST",
+        body: JSON.stringify({ slug, action }),
       }),
   },
 

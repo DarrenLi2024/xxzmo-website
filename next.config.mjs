@@ -22,6 +22,11 @@ const imageSources = [
 ];
 
 const nextConfig = {
+  output: "standalone",
+  outputFileTracingIncludes: {
+    "/*": ["./prisma/dev.db"],
+    "/api/**/*": ["./prisma/dev.db"],
+  },
   images: {
     remotePatterns: imageRemotePatterns,
   },

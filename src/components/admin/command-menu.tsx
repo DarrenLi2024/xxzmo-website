@@ -50,7 +50,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
         { label: "批量导入", icon: Upload, action: () => router.push("/admin/chuli/import") },
         { label: "辑古台 AI 生成", icon: Sparkles, action: () => router.push("/admin/jigu-tai") },
         { label: "标签管理", icon: Tags, action: () => router.push("/admin/tags") },
-        { label: "配图库", icon: Image, action: () => router.push("/admin/paintings") },
+        { label: "本地配图库", icon: Image, action: () => router.push("/admin/paintings") },
         { label: "系统设置", icon: Settings, action: () => router.push("/admin/settings") },
       ],
     },

@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ConverterFunction } from "opencc-js";
 import { ArticleBody } from "./ArticleBody";
 import { ArticleMeta } from "./ArticleMeta";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface PinyinMapItem {
   char: string;
@@ -89,11 +90,9 @@ export function ArticleDetail({
   useEffect(() => {
     const load = async () => {
       try {
-        let res = await fetch(`/api/articles/pinyin?articleId=${articleId}`);
-        let data = await res.json();
+        let data = await fetchJson<any>(`/api/articles/pinyin?articleId=${articleId}`);
         if (!data.success && data.message === "未生成拼音") {
-          res = await fetch("/api/articles/pinyin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ articleId }) });
-          data = await res.json();
+          data = await fetchJson<any>("/api/articles/pinyin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ articleId }) });
         }
         if (data.success && (data.data?.bodyMap || data.data?.pinyinMap)) {
           const legacyTitleLength = data.data.title?.length || 0;

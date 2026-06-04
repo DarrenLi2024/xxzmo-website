@@ -163,6 +163,7 @@ export function serializeArticleAdmin(a: ArticleWithTags): ArticleAdminData {
 
 function serializePainting(p: Painting | null | undefined): PaintingInfo | null {
   if (!p) return null;
+  if (!p.url.startsWith("/paintings/")) return null;
   return {
     id: p.id,
     title: p.title,

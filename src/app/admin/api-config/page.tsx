@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Wifi, Pencil, Check, X, Activity } from "lucide-react";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface Provider {
   id: string;
@@ -45,12 +46,10 @@ export default function AdminApiConfigPage() {
   const fetchProviders = useCallback(async () => {
     setLoading(true);
     try {
-      const [providerRes, taskRes] = await Promise.all([
-        fetch("/api/admin/providers"),
-        fetch("/api/admin/ai-tasks/stats"),
+      const [providerData, taskData] = await Promise.all([
+        fetchJson<Provider[]>("/api/admin/providers"),
+        fetchJson<{ tasks?: AiTaskStat[] }>("/api/admin/ai-tasks/stats"),
       ]);
-      const providerData = await providerRes.json();
-      const taskData = await taskRes.json();
       setProviders(providerData);
       setTaskStats(taskData.tasks || []);
     } catch (err) {
@@ -92,13 +91,12 @@ export default function AdminApiConfigPage() {
   async function handleTest(provider: Provider) {
     setTesting(provider.id);
     try {
-      const res = await fetch("/api/admin/providers/test", {
+      const data = await fetchJson<{ success: boolean; message: string; latencyMs?: number; checkedAt?: string }>("/api/admin/providers/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: provider.id }),
       });
-      const data = await res.json();
-      setTestResults((prev) => ({ ...prev, [provider.id]: data }));
+      setTestResults((prev) => ({ ...prev, [provider.id]: { ...data, checkedAt: data.checkedAt || new Date().toISOString() } }));
       if (data.success) {
         success(`${data.message}${data.latencyMs ? ` · ${data.latencyMs}ms` : ""}`);
         setProviders((prev) => prev.map((p) => (p.id === provider.id ? { ...p, enabled: true } : p)));
@@ -122,27 +120,22 @@ export default function AdminApiConfigPage() {
         : {};
 
     try {
-      const res = await fetch("/api/admin/providers", {
+      const saved = await fetchJson<Provider>("/api/admin/providers", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...providerData, ...apiKeyUpdate }),
       });
-      if (res.ok) {
-        const saved = await res.json();
-        setProviders((prev) => prev.map((p) => {
-          if (p.id === saved.id) return saved;
-          if (editing.name.startsWith("deepseek") && p.name.startsWith("deepseek") && (clearStoredKey || apiKeyDraft.trim())) {
-            return { ...p, hasApiKey: !clearStoredKey };
-          }
-          return p;
-        }));
-        setEditing(null);
-        success("配置已保存");
-      } else {
-        toastError("保存失败");
-      }
-    } catch {
-      toastError("保存失败");
+      setProviders((prev) => prev.map((p) => {
+        if (p.id === saved.id) return saved;
+        if (editing.name.startsWith("deepseek") && p.name.startsWith("deepseek") && (clearStoredKey || apiKeyDraft.trim())) {
+          return { ...p, hasApiKey: !clearStoredKey };
+        }
+        return p;
+      }));
+      setEditing(null);
+      success("配置已保存");
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "保存失败");
     }
   }
 

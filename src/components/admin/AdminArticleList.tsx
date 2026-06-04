@@ -81,7 +81,6 @@ export function AdminArticleList({
   const [detectingDuplicates, setDetectingDuplicates] = useState(false)
   const [batchAiAssistLoading, setBatchAiAssistLoading] = useState(false)
   const [batchPinyinLoading, setBatchPinyinLoading] = useState(false)
-  const [batchPaintingMatchLoading, setBatchPaintingMatchLoading] = useState(false)
   const [batchClearAiLoading, setBatchClearAiLoading] = useState(false)
   const [batchClearPaintingLoading, setBatchClearPaintingLoading] = useState(false)
   const { success, error: toastError } = useToast()
@@ -290,44 +289,6 @@ export function AdminArticleList({
           toastError("批量拼音校准失败")
         } finally {
           setBatchPinyinLoading(false)
-        }
-      },
-    })
-  }
-
-  async function handleBatchPaintingMatch() {
-    if (selected.size === 0) return
-    
-    confirm({
-      title: `确认对选中的 ${selected.size} 篇文章进行AI配图？`,
-      description: "将为没有配图的文章自动匹配配图",
-      async onConfirm() {
-        setBatchPaintingMatchLoading(true)
-        try {
-          const res = await fetch("/api/admin/articles/batch-painting-match", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ articleIds: Array.from(selected) }),
-          })
-          const data = await res.json()
-          
-          if (data.success > 0) {
-            success(`AI配图完成：成功 ${data.success} 篇`)
-          }
-          if (data.skipped > 0) {
-            success(`${data.skipped} 篇已有配图已跳过`)
-          }
-          if (data.failed > 0) {
-            toastError(`失败 ${data.failed} 篇`)
-          }
-          if (data.errors && data.errors.length > 0) {
-            console.error("AI配图错误:", data.errors)
-          }
-          fetchArticles()
-        } catch {
-          toastError("批量AI配图失败")
-        } finally {
-          setBatchPaintingMatchLoading(false)
         }
       },
     })
@@ -626,14 +587,6 @@ export function AdminArticleList({
                     >
                       <Loader2 size={14} className={batchPinyinLoading ? "animate-spin" : ""} />
                       {batchPinyinLoading ? "校准中..." : "AI拼音校准"}
-                    </button>
-                    <button
-                      onClick={handleBatchPaintingMatch}
-                      disabled={batchPaintingMatchLoading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-700 bg-blue/10 hover:bg-blue/20 rounded-full transition-colors disabled:opacity-50"
-                    >
-                      <Loader2 size={14} className={batchPaintingMatchLoading ? "animate-spin" : ""} />
-                      {batchPaintingMatchLoading ? "配图中..." : "AI配图"}
                     </button>
                     <button
                       onClick={handleClearAiConfig}

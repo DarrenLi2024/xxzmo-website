@@ -45,7 +45,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" data-scroll-behavior="smooth" className={`${inter.variable} ${notoSerifSC.variable} ${geist.variable} font-sans`}>
+    <html
+      lang="zh-CN"
+      data-scroll-behavior="smooth"
+      className={`${inter.variable} ${notoSerifSC.variable} ${geist.variable} font-sans`}
+      suppressHydrationWarning
+    >
       <body className="min-h-screen flex flex-col">
         <QueryProvider>
           <Header />

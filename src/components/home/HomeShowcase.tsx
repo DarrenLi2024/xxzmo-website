@@ -27,7 +27,7 @@ export function HomeShowcase({ hero, featured }: Props) {
             href={`/${hero.source}/${hero.slug}`}
             className="group block relative overflow-hidden rounded-2xl border border-paper-200 bg-white hover:shadow-lg transition-all duration-300"
           >
-            <div className="relative w-full aspect-[4/3] overflow-hidden rounded-t-2xl">
+            <div className="relative w-full aspect-[17/7] overflow-hidden rounded-t-2xl">
               {hero.painting ? (
                 <Image
                   src={hero.painting.thumbnail || hero.painting.url}
@@ -83,7 +83,7 @@ export function HomeShowcase({ hero, featured }: Props) {
               href={`/${article.source}/${article.slug}`}
               className="group flex gap-3 p-3 rounded-xl border border-paper-200 bg-white hover:shadow-sm hover:border-paper-300 transition-all duration-200 no-underline"
             >
-              <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0">
+              <div className="relative w-24 aspect-[17/7] rounded-lg overflow-hidden shrink-0">
                 {article.painting ? (
                   <Image
                     src={article.painting.thumbnail || article.painting.url}

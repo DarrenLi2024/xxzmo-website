@@ -1,7 +1,7 @@
 import { Metadata } from "next";
-import { AdminLayoutClient } from "@/components/layout/AdminLayout";
+import { AdminLayout } from "@/components/layout/AdminLayout";
 
-export const revalidate = 0; // ISR on-demand only — admin pages pre-render at build time
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: { default: "管理后台", template: "%s | 闲心子墨" },
@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <AdminLayoutClient>{children}</AdminLayoutClient>;
+  return <AdminLayout>{children}</AdminLayout>;
 }

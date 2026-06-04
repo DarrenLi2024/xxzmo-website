@@ -72,7 +72,7 @@ export function ArticleCard({
     <article className="group bg-white border border-paper-200 rounded overflow-hidden transition-shadow duration-300 hover:shadow-md">
       {painting && (
         <Link href={articleUrl} className="block overflow-hidden">
-          <div className="aspect-[3/2] overflow-hidden relative">
+          <div className="aspect-[17/7] overflow-hidden relative">
             <Image
               src={painting.thumbnail || painting.url}
               alt={painting.title}

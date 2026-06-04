@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useRef, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import NextImage from "next/image"
 import { Sparkles, Loader2, Check, AlertCircle, Lightbulb, Image as ImageIcon, X } from "lucide-react"
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { fetchJson } from "@/lib/fetch-json"
 
 interface AiSuggestion {
   category: string
@@ -44,6 +45,17 @@ interface AiAnalysisResult {
   appreciation: string
   tagSuggestions: string[]
   suggestions: AiSuggestion[]
+}
+
+interface LocalPainting {
+  id: string
+  title: string
+  artist: string | null
+  dynasty: string | null
+  url: string
+  thumbnail: string | null
+  description: string | null
+  tags?: string[]
 }
 
 interface AiReviewIssue {
@@ -169,38 +181,15 @@ export function ArticleForm(props: Props) {
   const [aiSourceMeta, setAiSourceMeta] = useState<AiSourceMeta | null>(null)
   const [articleConfidence, setArticleConfidence] = useState<number | null>(null)
 
-  const [aiPaintingMatching, setAiPaintingMatching] = useState(false)
-  const [aiPaintingMatches, setAiPaintingMatches] = useState<Array<{
-    id: string;
-    title: string;
-    artist: string | null;
-    dynasty: string | null;
-    url: string;
-    thumbnail: string | null;
-    description: string | null;
-    relevance: number;
-    matchReason: string;
-    isNew: boolean;
-  }>>([])
   const [generatingPinyin, setGeneratingPinyin] = useState(false)
   const [selectedPainting, setSelectedPainting] = useState<string | null>(null)
   const [failedPaintingIds, setFailedPaintingIds] = useState<Set<string>>(new Set())
-  const [currentPainting, setCurrentPainting] = useState<{
-    id: string;
-    title: string;
-    artist: string | null;
-    dynasty: string | null;
-    url: string;
-    thumbnail: string | null;
-    description: string | null;
-  } | null>(null)
+  const [currentPainting, setCurrentPainting] = useState<LocalPainting | null>(null)
   const [showPaintingDialog, setShowPaintingDialog] = useState(false)
-  const [paintingAnalysis, setPaintingAnalysis] = useState<{
-    keywords: string[];
-    theme: string;
-    mood: string;
-    matchReason: string;
-  } | null>(null)
+  const [localPaintings, setLocalPaintings] = useState<LocalPainting[]>([])
+  const [paintingLoading, setPaintingLoading] = useState(false)
+  const [paintingUploading, setPaintingUploading] = useState(false)
+  const paintingFileInputRef = useRef<HTMLInputElement>(null)
 
   const articleId = isEdit ? props.articleId : undefined
   const draftKey = `article-draft:${props.source}:${articleId || "new"}`
@@ -223,12 +212,10 @@ export function ArticleForm(props: Props) {
           notes: detail.notes || "",
           tags: (detail.tags || []).join(", "),
           status: detail.status || "draft",
-          paintingId: detail.paintingId || undefined,
+          paintingId: detail.painting ? detail.paintingId || undefined : undefined,
         })
-        if (detail.paintingId) {
-          setSelectedPainting(detail.paintingId)
-        }
         if (detail.painting) {
+          setSelectedPainting(detail.painting.id)
           setCurrentPainting(detail.painting)
         }
         if (detail.reviewReport) {
@@ -722,50 +709,48 @@ export function ArticleForm(props: Props) {
     toastSuccess(`已采纳 ${appliedIndexes.length} 条建议，请确认后保存`)
   }
 
-  async function handleAiPaintMatch() {
-    if (!form.body || !form.title) {
-      const msg = "请先填写标题和正文"
-      setError(msg)
-      toastError(msg)
-      return
-    }
-    setAiPaintingMatching(true)
-    setError("")
-    setShowPaintingDialog(true)
-
+  async function loadLocalPaintings() {
+    setPaintingLoading(true)
     try {
-      const res = await fetch("/api/admin/paintings/ai-match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: form.title,
-          body: form.body,
-          tags: form.tags.split(/[,，]/).map(t => t.trim()).filter(Boolean),
-          count: 4,
-        }),
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        setAiPaintingMatches(data.matches || [])
-        setPaintingAnalysis(data.analysis || null)
-      } else {
-        let msg = "AI 配图匹配失败"
-        try {
-          const err = await res.json()
-          msg = err.error || msg
-        } catch {
-          msg = `服务器错误 (${res.status})`
-        }
-        setError(msg)
-        toastError(msg)
-      }
+      const data = await fetchJson<LocalPainting[]>("/api/paintings")
+      setLocalPaintings(data)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "网络错误，请重试"
+      const msg = err instanceof Error ? err.message : "配图库加载失败"
       setError(msg)
       toastError(msg)
     } finally {
-      setAiPaintingMatching(false)
+      setPaintingLoading(false)
+    }
+  }
+
+  async function openPaintingDialog() {
+    setShowPaintingDialog(true)
+    setSelectedPainting(form.paintingId || currentPainting?.id || null)
+    await loadLocalPaintings()
+  }
+
+  async function handlePaintingUpload(file: File) {
+    setPaintingUploading(true)
+    setError("")
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const uploaded = await fetchJson<LocalPainting>("/api/paintings", {
+        method: "POST",
+        body: formData,
+      })
+      setLocalPaintings((prev) => [uploaded, ...prev.filter((item) => item.id !== uploaded.id)])
+      setSelectedPainting(uploaded.id)
+      setCurrentPainting(uploaded)
+      setForm((prev) => ({ ...prev, paintingId: uploaded.id }))
+      toastSuccess("本地配图已上传并选择")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "上传失败，请稍后重试"
+      setError(msg)
+      toastError(msg)
+    } finally {
+      setPaintingUploading(false)
+      if (paintingFileInputRef.current) paintingFileInputRef.current.value = ""
     }
   }
 
@@ -1295,36 +1280,39 @@ export function ArticleForm(props: Props) {
             />
             <button
               type="button"
-              onClick={handleAiPaintMatch}
-              disabled={aiPaintingMatching}
-              className="mt-2 inline-flex items-center gap-1.5 text-xs text-violet-600 hover:text-violet-700 disabled:opacity-50"
+              onClick={openPaintingDialog}
+              disabled={paintingLoading}
+              className="mt-2 inline-flex items-center gap-1.5 text-xs text-accent hover:text-accent-dim disabled:opacity-50"
             >
-              {aiPaintingMatching ? (
+              {paintingLoading ? (
                 <Loader2 size={12} className="animate-spin" />
               ) : (
                 <ImageIcon size={12} />
               )}
-              AI 配图
+              选择/上传本地配图
             </button>
 
             {/* Current Selected Painting Preview */}
             {currentPainting && (
               <div className="mt-4 border border-border rounded-lg p-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <NextImage
-                      src={currentPainting.thumbnail || currentPainting.url}
-                      alt={currentPainting.title}
-                      width={80}
-                      height={80}
-                      className="w-20 h-20 object-cover rounded-md bg-muted"
-                    />
-                    <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative w-32 aspect-[17/7] overflow-hidden rounded-md bg-muted shrink-0">
+                      <NextImage
+                        src={currentPainting.thumbnail || currentPainting.url}
+                        alt={currentPainting.title}
+                        fill
+                        sizes="128px"
+                        className="object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium">{currentPainting.title}</p>
                       <p className="text-xs text-muted-foreground">
                         {currentPainting.artist || "佚名"}
                         {currentPainting.dynasty && ` · ${currentPainting.dynasty}`}
                       </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">本地上传 · 170:70</p>
                     </div>
                   </div>
                   <button
@@ -1617,20 +1605,14 @@ export function ArticleForm(props: Props) {
           <div className="bg-background rounded-lg shadow-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b">
               <div>
-                <h3 className="text-lg font-medium">AI 智能配图推荐</h3>
-                {paintingAnalysis && (
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    检索词：{paintingAnalysis.keywords.join("、")}
-                    · 主题：{paintingAnalysis.theme}
-                    · 氛围：{paintingAnalysis.mood}
-                  </p>
-                )}
+                <h3 className="text-lg font-medium">本地上传配图</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  仅使用本地上传图片，前台统一按 170:70 展示。
+                </p>
               </div>
               <button
                 onClick={() => {
                   setShowPaintingDialog(false)
-                  setAiPaintingMatches([])
-                  setPaintingAnalysis(null)
                 }}
                 className="p-1 hover:bg-muted rounded"
               >
@@ -1638,14 +1620,40 @@ export function ArticleForm(props: Props) {
               </button>
             </div>
             <div className="p-4 overflow-y-auto max-h-[calc(90vh-120px)]">
-              {aiPaintingMatching ? (
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 p-3">
+                <div>
+                  <p className="text-sm font-medium">上传本地配图</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">支持 JPG / PNG / WebP / GIF，上传原图不限比例，展示时按 17:7 裁切。</p>
+                </div>
+                <input
+                  ref={paintingFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) void handlePaintingUpload(file)
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => paintingFileInputRef.current?.click()}
+                  disabled={paintingUploading}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {paintingUploading ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
+                  上传
+                </button>
+              </div>
+
+              {paintingLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={24} className="animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-muted-foreground">AI 正在分析诗文并匹配配图...</span>
+                  <span className="ml-2 text-muted-foreground">正在加载本地配图库...</span>
                 </div>
-              ) : aiPaintingMatches.length > 0 ? (
+              ) : localPaintings.length > 0 ? (
                 <div className="grid grid-cols-2 gap-4">
-                  {aiPaintingMatches.map((painting) => (
+                  {localPaintings.map((painting) => (
                     <div
                       key={painting.id}
                       onClick={() => setSelectedPainting(painting.id)}
@@ -1656,7 +1664,7 @@ export function ArticleForm(props: Props) {
                           : "border-border hover:border-primary/50"
                       )}
                     >
-                      <div className="aspect-[4/3] bg-muted relative">
+                      <div className="aspect-[17/7] bg-muted relative">
                         {(painting.thumbnail || painting.url) && !failedPaintingIds.has(painting.id) ? (
                           <NextImage
                             src={painting.thumbnail || painting.url}
@@ -1690,14 +1698,14 @@ export function ArticleForm(props: Props) {
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {painting.artist || "佚名"} {painting.dynasty && `· ${painting.dynasty}`}
                         </p>
-                        <p className="text-xs text-violet-600 mt-1">{painting.matchReason}</p>
+                        <p className="text-xs text-muted-foreground mt-1">本地上传 · 170:70</p>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-center py-12 text-muted-foreground">
-                  暂无匹配的配图，请尝试其他内容
+                  暂无本地配图，请先上传图片。
                 </div>
               )}
             </div>
@@ -1705,8 +1713,6 @@ export function ArticleForm(props: Props) {
               <button
                 onClick={() => {
                   setShowPaintingDialog(false)
-                  setAiPaintingMatches([])
-                  setPaintingAnalysis(null)
                   setSelectedPainting(null)
                 }}
                 className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted"
@@ -1717,15 +1723,12 @@ export function ArticleForm(props: Props) {
                 onClick={async () => {
                   if (selectedPainting) {
                     try {
-                      const res = await fetch(`/api/admin/paintings/${selectedPainting}`)
-                      if (res.ok) {
-                        const painting = await res.json()
-                        setForm(prev => ({ ...prev, paintingId: selectedPainting }))
-                        setCurrentPainting(painting)
-                        toastSuccess("已选择配图")
-                      }
-                    } catch {
-                      toastError("选择配图失败")
+                      const painting = await fetchJson<LocalPainting>(`/api/admin/paintings/${selectedPainting}`)
+                      setForm(prev => ({ ...prev, paintingId: selectedPainting }))
+                      setCurrentPainting(painting)
+                      toastSuccess("已选择本地配图")
+                    } catch (err) {
+                      toastError(err instanceof Error ? err.message : "选择配图失败")
                     }
                   }
                   setShowPaintingDialog(false)

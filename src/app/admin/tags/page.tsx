@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Trash2, Plus, Search, Pencil, Check, X, GitMerge } from "lucide-react";
 import { useToast } from "@/components/admin/Toast";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface Tag {
   id: string;
@@ -28,32 +29,32 @@ export default function AdminTagsPage() {
   const [merging, setMerging] = useState(false);
 
   const fetchTags = useCallback(async () => {
-    const res = await fetch("/api/tags");
-    const data = await res.json();
-    setTags(data);
-    setLoading(false);
-  }, []);
+    try {
+      const data = await fetchJson<Tag[]>("/api/tags");
+      setTags(data);
+    } catch (error) {
+      console.error("[AdminTagsPage] 获取标签失败:", error);
+      toastError("标签加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [toastError]);
 
   useEffect(() => { fetchTags(); }, [fetchTags]);
 
   async function handleCreate() {
     if (!newName.trim()) return;
     try {
-      const res = await fetch("/api/tags", {
+      await fetchJson("/api/tags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim() }),
       });
-      if (res.ok) {
-        setNewName("");
-        fetchTags();
-        success(`标签「${newName.trim()}」已创建`);
-      } else {
-        const data = await res.json();
-        toastError(data.error || "创建失败");
-      }
-    } catch {
-      toastError("网络错误，请重试");
+      setNewName("");
+      fetchTags();
+      success(`标签「${newName.trim()}」已创建`);
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "网络错误，请重试");
     }
   }
 
@@ -73,19 +74,15 @@ export default function AdminTagsPage() {
       return;
     }
     try {
-      const res = await fetch(`/api/tags`, {
+      await fetchJson(`/api/tags`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: tag.id, name: editName.trim() }),
       });
-      if (res.ok) {
-        success(`标签已重命名为「${editName.trim()}」`);
-        fetchTags();
-      } else {
-        toastError("重命名失败");
-      }
-    } catch {
-      toastError("网络错误，请重试");
+      success(`标签已重命名为「${editName.trim()}」`);
+      fetchTags();
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "网络错误，请重试");
     }
     cancelRename();
   }
@@ -110,20 +107,16 @@ export default function AdminTagsPage() {
       onConfirm: async () => {
         setMerging(true);
         try {
-          const res = await fetch("/api/tags/merge", {
+          await fetchJson("/api/tags/merge", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ keepId, removeId }),
           });
-          if (res.ok) {
-            success(`已合并至「${keepTag.name}」`);
-            setSelectedIds([]);
-            fetchTags();
-          } else {
-            toastError("合并失败");
-          }
-        } catch {
-          toastError("网络错误，请重试");
+          success(`已合并至「${keepTag.name}」`);
+          setSelectedIds([]);
+          fetchTags();
+        } catch (error) {
+          toastError(error instanceof Error ? error.message : "网络错误，请重试");
         } finally {
           setMerging(false);
         }
@@ -138,16 +131,12 @@ export default function AdminTagsPage() {
       variant: "danger",
       onConfirm: async () => {
         try {
-          const res = await fetch(`/api/tags?id=${tag.id}`, { method: "DELETE" });
-          if (res.ok) {
-            success(`标签「${tag.name}」已删除`);
-            setSelectedIds((prev) => prev.filter((id) => id !== tag.id));
-            fetchTags();
-          } else {
-            toastError("删除失败");
-          }
-        } catch {
-          toastError("网络错误，请重试");
+          await fetchJson(`/api/tags?id=${tag.id}`, { method: "DELETE" });
+          success(`标签「${tag.name}」已删除`);
+          setSelectedIds((prev) => prev.filter((id) => id !== tag.id));
+          fetchTags();
+        } catch (error) {
+          toastError(error instanceof Error ? error.message : "网络错误，请重试");
         }
       },
     });

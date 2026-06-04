@@ -96,20 +96,6 @@ export const xianyinParseSchema = z.object({
   articles: z.array(xianyinArticleSchema),
 });
 
-export const paintingAnalysisSchema = z.object({
-  keywords: z.array(z.string()).default([]),
-  theme: z.string().default("山水"),
-  mood: z.string().default("恬淡"),
-  style: z.string().default("水墨"),
-  matchReason: z.string().default("符合诗文意境"),
-  imagery: z.array(z.string()).default([]),
-  searchTerms: z.array(z.string()).default([]),
-});
-
-export const paintingSearchKeywordsSchema = z.object({
-  keywords: z.array(z.string()).default([]),
-});
-
 export const jiguImportSchema = z.object({
   author: z.string().default("佚名"),
   dynasty: z.string().default(""),
@@ -121,6 +107,5 @@ export const jiguImportSchema = z.object({
 });
 
 export type ArticleAssistResult = z.infer<typeof articleAssistSchema>;
-export type PaintingAnalysisResult = z.infer<typeof paintingAnalysisSchema>;
 export type JiguImportResult = z.infer<typeof jiguImportSchema>;
 export type PinyinCalibrationResult = z.infer<typeof pinyinCalibrationSchema>;

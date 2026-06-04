@@ -39,6 +39,9 @@ export async function PUT(
     for (const key of fieldKeys) {
       if (rawData[key] !== undefined) data[key] = rawData[key];
     }
+    if (data.paintingId !== undefined) {
+      data.paintingId = await validateLocalPaintingId(data.paintingId);
+    }
     if (["title", "author", "body"].some((key) => rawData[key] !== undefined)) {
       data.pinyin = null;
     }
@@ -67,6 +70,19 @@ export async function PUT(
     const message = error instanceof Error ? error.message : "Update failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }
+}
+
+async function validateLocalPaintingId(value: unknown): Promise<string | null> {
+  if (value === null || value === "") return null;
+  if (typeof value !== "string") throw new Error("配图 ID 无效");
+  const painting = await prisma.painting.findUnique({
+    where: { id: value },
+    select: { id: true, url: true },
+  });
+  if (!painting || !painting.url.startsWith("/paintings/")) {
+    throw new Error("只能选择本地上传配图");
+  }
+  return painting.id;
 }
 
 export async function DELETE(

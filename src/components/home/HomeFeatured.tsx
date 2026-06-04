@@ -11,7 +11,7 @@ export function HomeFeatured({ articles }: { articles: ArticleListItem[] }) {
           <Link
             key={a.id}
             href={`/${a.source}/${a.slug}`}
-            className="group relative overflow-hidden rounded-xl bg-paper-100 aspect-[3/4] hover:shadow-lg transition-all duration-300"
+            className="group relative overflow-hidden rounded-xl bg-paper-100 aspect-[17/7] hover:shadow-lg transition-all duration-300"
           >
             {a.painting && (
               <Image

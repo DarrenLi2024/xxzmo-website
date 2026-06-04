@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/admin/Toast";
+import { fetchJson } from "@/lib/fetch-json";
 
 export default function AdminSettingsPage() {
   const { success, error: toastError } = useToast();
@@ -22,8 +23,7 @@ export default function AdminSettingsPage() {
   });
 
   useEffect(() => {
-    fetch("/api/site-config")
-      .then((r) => r.json())
+    fetchJson<Record<string, unknown> | null>("/api/site-config")
       .then((data) => {
         if (data) setForm((prev) => ({ ...prev, ...data }));
       })
@@ -35,12 +35,11 @@ export default function AdminSettingsPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      const res = await fetch("/api/site-config", {
+      await fetchJson("/api/site-config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error("保存失败");
       success("设置已保存");
     } catch (e) {
       toastError(e instanceof Error ? e.message : "保存失败，请重试");

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getAdminFromCookies } from "@/lib/auth";
 import { writeFile, mkdir, unlink } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 
 export async function GET() {
   const paintings = await prisma.painting.findMany({
+    where: {
+      url: { startsWith: "/paintings/" },
+    },
     orderBy: { createdAt: "desc" },
   });
   const list = paintings.map((p) => ({
@@ -17,6 +21,10 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!(await getAdminFromCookies())) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
 
@@ -52,8 +60,10 @@ export async function POST(request: NextRequest) {
 
     // Write file to disk
     const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+
     const filePath = path.join(uploadDir, filename);
-    await writeFile(filePath, Buffer.from(bytes));
+    await writeFile(filePath, buffer);
 
     // Extract title from original filename (strip extension)
     const title = path.basename(file.name, ext) || "未命名配图";
@@ -79,6 +89,10 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    if (!(await getAdminFromCookies())) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 

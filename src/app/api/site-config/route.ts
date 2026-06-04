@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getAdminFromCookies } from "@/lib/auth";
 
 export async function GET() {
   const config = await prisma.siteConfig.findUnique({ where: { id: "site" } });
@@ -8,6 +9,10 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
+    if (!(await getAdminFromCookies())) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
 
     // Only allow updating known fields

@@ -2,18 +2,21 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { LogOut, ExternalLink, Search } from "lucide-react"
 import { AdminSidebar } from "./AdminSidebar"
 import { ToastProvider } from "@/components/admin/Toast"
 import { ConfirmDialogProvider } from "@/components/admin/ConfirmDialog"
-import { CommandMenu } from "@/components/admin/command-menu"
 import { cn } from "@/lib/utils"
 
 function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
-  const [searchOpen, setSearchOpen] = useState(false)
   const router = useRouter()
+  const pathname = usePathname()
+
+  if (pathname === "/admin/login") {
+    return <>{children}</>
+  }
 
   async function handleLogout() {
     try {
@@ -30,7 +33,6 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
       <AdminSidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed(!collapsed)}
-        onSearchClick={() => setSearchOpen(true)}
       />
 
       <div className={cn("admin-main", collapsed && "admin-main.collapsed")}>
@@ -38,7 +40,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-4 flex-1">
             {/* Search trigger */}
             <button
-              onClick={() => setSearchOpen(true)}
+              onClick={() => {}}
               className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground bg-muted/50 rounded-lg border border-border hover:bg-muted transition-colors md:w-64"
             >
               <Search size={14} />
@@ -69,9 +71,6 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         </header>
         <main className="admin-content">{children}</main>
       </div>
-
-      {/* Command Menu */}
-      <CommandMenu open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   )
 }

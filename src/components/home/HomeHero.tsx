@@ -17,7 +17,7 @@ export function HomeHero({ featured }: { featured: ArticleListItem }) {
       className="group block relative overflow-hidden rounded-2xl mb-16"
     >
       {/* 背景：优先配图，无图用渐变 */}
-      <div className="relative w-full aspect-[16/9] md:aspect-[21/9] overflow-hidden rounded-2xl">
+      <div className="relative w-full aspect-[17/7] overflow-hidden rounded-2xl">
         {featured.painting ? (
           <Image
             src={featured.painting.thumbnail || featured.painting.url}
