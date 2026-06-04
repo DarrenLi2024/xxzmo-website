@@ -20,7 +20,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   });
 
   const articleRoutes = articles.map((a) => ({
-    url: `${baseUrl}/${a.source === "jigu" ? "jigu" : "chuli"}/${a.slug}`,
+    url: `${baseUrl}/${a.source}/${a.slug}`,
     lastModified: a.updatedAt,
     changeFrequency: "monthly" as const,
     priority: 0.6,
