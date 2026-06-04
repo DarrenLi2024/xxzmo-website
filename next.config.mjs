@@ -8,6 +8,10 @@ const imageRemotePatterns = [
     protocol: "https",
     hostname: "res.cbvea.com",
   },
+  {
+    protocol: "https",
+    hostname: "upload.wikimedia.org",
+  },
 ];
 
 const imageSources = [
