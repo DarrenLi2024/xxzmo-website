@@ -5,14 +5,22 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  // Optimize for serverless (Vercel) with Neon PostgreSQL
-  const connectionString = process.env.DATABASE_URL || "file:./dev.db";
+  // Supabase PostgreSQL (via PgBouncer pooler on port 6543)
+  const connectionString = process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL || "";
 
-  // Add connection_limit=1 for serverless to prevent connection exhaustion
   let adjustedUrl = connectionString;
-  if (connectionString.startsWith("postgresql://") && !connectionString.includes("connection_limit")) {
-    const separator = connectionString.includes("?") ? "&" : "?";
-    adjustedUrl = `${connectionString}${separator}connection_limit=1&pool_timeout=10`;
+
+  // Supabase pooler already manages connections, but we add pgbouncer=true 
+  // for Prisma compatibility with transaction mode pooler
+  if (connectionString.startsWith("postgresql://")) {
+    const params = new URLSearchParams(
+      connectionString.includes("?") ? connectionString.split("?")[1] : ""
+    );
+    params.set("pgbouncer", "true");
+    params.set("connection_limit", "1");
+    params.set("pool_timeout", "10");
+    const base = connectionString.split("?")[0];
+    adjustedUrl = `${base}?${params.toString()}`;
   }
 
   return new PrismaClient({
@@ -29,8 +37,6 @@ function createPrismaClient() {
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
-// In development, cache the client on global
-// In production serverless, we want fresh connections per instance
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
