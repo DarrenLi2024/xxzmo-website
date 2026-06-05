@@ -3,9 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { getAdminFromCookies } from "@/lib/auth";
 import { put, del } from "@vercel/blob";
 
-// Vercel Blob token — read from env; automatically available in Vercel Functions
-const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-
 export async function GET() {
   const paintings = await prisma.painting.findMany({
     orderBy: { createdAt: "desc" },
@@ -54,18 +51,20 @@ export async function POST(request: NextRequest) {
       dotIndex > 0 ? file.name.substring(0, dotIndex) : "未命名配图";
     const ext = dotIndex > 0 ? file.name.substring(dotIndex) : ".jpg";
 
-    // Upload to Vercel Blob (or local filesystem fallback for dev)
+    // Upload to Vercel Blob
+    // In Vercel environment, BLOB_READ_WRITE_TOKEN is auto-injected by the Blob integration.
+    // In local dev (token absent), we fall back to Base64 data URL.
     let url: string;
 
-    if (BLOB_TOKEN) {
-      // Production: Vercel Blob
-      const { url: blobUrl } = await put(`paintings/${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`, file, {
-        access: "public",
-        token: BLOB_TOKEN,
-      });
-      url = blobUrl;
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      const blob = await put(
+        `paintings/${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`,
+        file,
+        { access: "public" }
+      );
+      url = blob.url;
     } else {
-      // Development fallback: Base64 data URL
+      // Local dev fallback
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
       const base64 = buffer.toString("base64");
@@ -117,10 +116,10 @@ export async function DELETE(request: NextRequest) {
       data: { paintingId: null },
     });
 
-    // Delete from Vercel Blob (if it's a blob URL)
+    // Delete from Vercel Blob (best-effort)
     if (painting.url.startsWith("https://") && painting.url.includes("public.blob.vercel-storage.com")) {
       try {
-        await del(painting.url, { token: BLOB_TOKEN });
+        await del(painting.url);
       } catch {
         // best-effort cleanup
       }
