@@ -8,7 +8,7 @@ interface Props {
 }
 
 export const dynamicParams = true;
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 async function getArticle(source: string, slug: string) {
   return prisma.article.findFirst({
