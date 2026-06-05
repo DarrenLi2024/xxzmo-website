@@ -5,8 +5,11 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  // Optimize for serverless (Vercel) with Neon PostgreSQL
-  const connectionString = process.env.DATABASE_URL || "file:./dev.db";
+  // POSTGRES_PRISMA_URL is injected by Vercel + Neon integration
+  // Fall back to DATABASE_URL for local SQLite dev
+  const connectionString = process.env.POSTGRES_PRISMA_URL
+    || process.env.DATABASE_URL
+    || "file:./dev.db";
 
   // Add connection_limit=1 for serverless to prevent connection exhaustion
   let adjustedUrl = connectionString;

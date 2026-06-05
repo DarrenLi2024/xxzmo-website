@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("POSTGRES_PRISMA_URL")
 }
 
 model Article {
@@ -50,7 +50,6 @@ model Article {
   confidence  Float?
   likeCount   Int       @default(0)
 
-  // === Indexes ===
   @@index([status, createdAt])
   @@index([source, status])
   @@index([status, publishedAt])
