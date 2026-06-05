@@ -9,9 +9,13 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - VOLCENGINE_API_KEY=${VOLCENGINE_API_KEY}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
       - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be configured}
       - NEXT_PUBLIC_SITE_URL=http://localhost:3080
     volumes:
-      - ./prisma/dev.db:/app/prisma/dev.db
+      - app-data:/app/data
     restart: unless-stopped
+
+volumes:
+  app-data:

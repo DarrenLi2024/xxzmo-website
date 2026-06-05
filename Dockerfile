@@ -18,7 +18,7 @@ WORKDIR /app
 
 RUN addgroup -g 1001 -S appgroup && adduser -u 1001 -S appuser -G appgroup
 
-COPY --from=builder /app/public ./public
+COPY --chown=appuser:appgroup --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
@@ -27,6 +27,8 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/package.json ./package.json
 
 RUN chown -R appuser:appgroup /app
+# Ensure prisma dir exists and DB file has correct permissions for volume mount
+RUN mkdir -p /app/prisma /app/data && chmod 777 /app/prisma /app/data
 
 # Auto-initialize database on container start (idempotent: safe to run on existing DB)
 COPY docker-entrypoint.sh /docker-entrypoint.sh
