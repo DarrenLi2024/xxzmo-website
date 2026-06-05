@@ -6,10 +6,13 @@ import { ArticleCard } from "@/components/article/ArticleCard";
 import { TypeTabBar } from "@/components/common/TypeTabBar";
 import { TypeFilterClient } from "./TypeFilterClient";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
-export const dynamicParams = true;
+export const dynamicParams = false;
 
+export function generateStaticParams() {
+  return [{ source: "chuli" }, { source: "jigu" }];
+}
 
 const META: Record<string, { title: string; description: string }> = {
   chuli: { title: "樗栎集", description: "狂野君原创诗文" },

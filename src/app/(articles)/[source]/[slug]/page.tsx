@@ -12,8 +12,15 @@ interface Props {
 }
 
 export const dynamicParams = true;
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
+export async function generateStaticParams() {
+  const articles = await prisma.article.findMany({
+    where: { status: "published" },
+    select: { source: true, slug: true },
+  });
+  return articles.map((a) => ({ source: a.source, slug: a.slug }));
+}
 
 async function getArticle(source: string, slug: string) {
   return prisma.article.findFirst({
