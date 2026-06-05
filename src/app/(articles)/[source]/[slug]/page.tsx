@@ -101,7 +101,7 @@ export default async function ArticleDetailPage({ params }: Props) {
 
   const annotations = parseAnnotations(article.annotations);
 
-  const painting = article.painting?.url.startsWith("/paintings/")
+  const painting = article.painting?.url.startsWith("data:")
     ? { ...article.painting, tags: parseStringArray(article.painting.tags) }
     : null;
 

@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAdminFromCookies } from "@/lib/auth";
-import { writeFile, mkdir, unlink } from "fs/promises";
-import path from "path";
-import { randomUUID } from "crypto";
 
 export async function GET() {
   const paintings = await prisma.painting.findMany({
-    where: {
-      url: { startsWith: "/paintings/" },
-    },
     orderBy: { createdAt: "desc" },
   });
   const list = paintings.map((p) => ({
@@ -50,29 +44,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate a unique filename
-    const ext = path.extname(file.name) || ".jpg";
-    const filename = `${randomUUID()}${ext}`;
-
-    // Ensure the paintings directory exists
-    const uploadDir = path.join(process.cwd(), "public", "paintings");
-    await mkdir(uploadDir, { recursive: true });
-
-    // Write file to disk
+    // Convert file to Base64 data URL (no filesystem writes — works on Vercel)
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+    const base64 = buffer.toString("base64");
+    const mimeType = file.type || "image/png";
+    const dataUrl = `data:${mimeType};base64,${base64}`;
 
-    const filePath = path.join(uploadDir, filename);
-    await writeFile(filePath, buffer);
-
-    // Extract title from original filename (strip extension)
-    const title = path.basename(file.name, ext) || "未命名配图";
+    // Extract title from original filename
+    const dotIndex = file.name.lastIndexOf(".");
+    const title =
+      dotIndex > 0 ? file.name.substring(0, dotIndex) : "未命名配图";
 
     // Create database record
     const painting = await prisma.painting.create({
       data: {
         title,
-        url: `/paintings/${filename}`,
+        url: dataUrl,
         tags: "[]",
       },
     });
@@ -113,14 +101,6 @@ export async function DELETE(request: NextRequest) {
 
     // Delete the database record
     await prisma.painting.delete({ where: { id } });
-
-    // Try to delete the file from disk (best-effort)
-    try {
-      const filePath = path.join(process.cwd(), "public", painting.url);
-      await unlink(filePath);
-    } catch {
-      // File might not exist on disk (e.g. seeded data), ignore
-    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
