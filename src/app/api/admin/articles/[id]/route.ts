@@ -79,7 +79,7 @@ async function validateLocalPaintingId(value: unknown): Promise<string | null> {
     where: { id: value },
     select: { id: true, url: true },
   });
-  if (!painting || !painting.url.startsWith("data:")) {
+  if (!painting || !painting.url) {
     throw new Error("只能选择本地上传配图");
   }
   return painting.id;

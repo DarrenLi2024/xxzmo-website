@@ -94,7 +94,7 @@ export async function getHeroArticle(): Promise<HeroArticle | null> {
     where: {
       status: "published",
       paintingId: { not: null },
-      painting: { is: { url: { startsWith: "data:" } } },
+      painting: { is: { url: { not: "" } } },
     },
     orderBy: { createdAt: "desc" },
     select: heroSelect,
@@ -112,7 +112,7 @@ export async function getFeaturedArticles(excludeId?: string): Promise<FeaturedA
     where: {
       status: "published",
       paintingId: { not: null },
-      painting: { is: { url: { startsWith: "data:" } } },
+      painting: { is: { url: { not: "" } } },
       ...(excludeId ? { id: { not: excludeId } } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -200,7 +200,7 @@ function serializeTopicArticle(a: any): TopicArticle {
 }
 
 function serializeLocalPainting(painting: any) {
-  if (!painting || typeof painting.url !== "string" || !painting.url.startsWith("data:")) return null;
+  if (!painting || typeof painting.url !== "string" || !painting.url) return null;
   return {
     ...painting,
     tags: parseStringArray(painting.tags),

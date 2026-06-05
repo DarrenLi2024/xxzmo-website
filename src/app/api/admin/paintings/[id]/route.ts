@@ -11,7 +11,7 @@ export async function GET(
       where: { id },
     });
 
-    if (!painting || !painting.url.startsWith("data:")) {
+    if (!painting || !painting.url) {
       return NextResponse.json({ error: "配图不存在" }, { status: 404 });
     }
 
