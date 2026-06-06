@@ -69,40 +69,40 @@ export function ArticleCard({
   const articleUrl = `/${source}/${slug}`;
 
   return (
-    <article className="group bg-white border border-paper-200 rounded overflow-hidden transition-shadow duration-300 hover:shadow-md">
-      {painting && (
-        <Link href={articleUrl} className="block overflow-hidden">
-          <div className="aspect-[17/7] overflow-hidden relative">
-            <Image
-              src={painting.thumbnail || painting.url}
-              alt={painting.title}
-              fill
-              sizes="(max-width: 768px) 100vw, 50vw"
-              className="object-cover object-center transition-transform duration-700 group-hover:scale-105"
-            />
+    <Link
+      href={articleUrl}
+      className="block group bg-white border border-paper-200 rounded overflow-hidden transition-shadow duration-300 hover:shadow-md cursor-pointer"
+    >
+      <article>
+        {painting && (
+          <div className="block overflow-hidden">
+            <div className="aspect-[17/7] overflow-hidden relative">
+              <Image
+                src={painting.thumbnail || painting.url}
+                alt={painting.title}
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-cover object-center transition-transform duration-700 group-hover:scale-105"
+              />
+            </div>
           </div>
-        </Link>
-      )}
-      <div className="px-6 py-5 md:px-8 md:py-6">
-        <Link href={articleUrl} className="block no-underline">
+        )}
+        <div className="px-6 py-5 md:px-8 md:py-6">
           <h3 className="text-lg md:text-xl font-serif text-ink-900 font-medium tracking-wide mb-1.5 md:mb-2 group-hover:text-accent transition-colors duration-200">
             {title}
           </h3>
-        </Link>
-        <ArticleMeta type={type} author={author} dateRaw={dateRaw} className="mb-3 md:mb-4" />
-        <p className="text-sm md:text-base text-ink-500 mb-3 font-serif group-hover:text-ink-600 transition-colors duration-200" style={{lineHeight: 1.7, letterSpacing: '0.03em'}}>
-          {excerptText}
-          {hasMore && (
-            <Link
-              href={articleUrl}
-              className="inline-block ml-1 article-read-more transition-colors"
-            >
-              （阅读全文）
-            </Link>
-          )}
-        </p>
-        <TagBar tags={tags} />
-      </div>
-    </article>
+          <ArticleMeta type={type} author={author} dateRaw={dateRaw} className="mb-3 md:mb-4" />
+          <p className="text-sm md:text-base text-ink-500 mb-3 font-serif group-hover:text-ink-600 transition-colors duration-200" style={{lineHeight: 1.7, letterSpacing: '0.03em'}}>
+            {excerptText}
+            {hasMore && (
+              <span className="inline-block ml-1 article-read-more transition-colors">
+                （阅读全文）
+              </span>
+            )}
+          </p>
+          <TagBar tags={tags} />
+        </div>
+      </article>
+    </Link>
   );
 }
