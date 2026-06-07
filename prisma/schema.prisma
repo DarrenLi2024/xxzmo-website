@@ -56,6 +56,8 @@ model Article {
   @@index([status, publishedAt])
   @@index([paintingId])
   @@index([createdAt])
+  @@index([source, status, createdAt])
+  @@index([source, status, slug])
 }
 
 model Tag {

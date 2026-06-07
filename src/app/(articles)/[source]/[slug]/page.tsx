@@ -2,6 +2,7 @@ import { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Image from "next/image";
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { ArticleDetail } from "@/components/article/ArticleDetail";
 import { TagBar } from "@/components/article/TagBar";
@@ -11,11 +12,15 @@ interface Props {
   params: Promise<{ source: string; slug: string }>;
 }
 
-// 动态渲染: 不预生成静态页面，避免构建时打爆 Supabase 连接池 (pool_size: 15)
-export const dynamic = "force-dynamic";
+export const dynamicParams = true;
 export const revalidate = 60;
 
-async function getArticle(source: string, slug: string) {
+// Keep build-time database load near zero, then cache each article page on first request.
+export function generateStaticParams() {
+  return [];
+}
+
+const getArticle = cache(async (source: string, slug: string) => {
   return prisma.article.findFirst({
     where: { slug, source, status: "published" },
     include: {
@@ -23,25 +28,17 @@ async function getArticle(source: string, slug: string) {
       painting: true,
     },
   });
-}
+});
 
 interface AdjacentArticle {
   slug: string;
   title: string;
 }
 
-async function getAdjacentArticles(source: string, currentSlug: string): Promise<{
+async function getAdjacentArticles(source: string, currentSlug: string, currentCreatedAt: Date): Promise<{
   prev: AdjacentArticle | null;
   next: AdjacentArticle | null;
 }> {
-  const current = await prisma.article.findFirst({
-    where: { slug: currentSlug, source, status: "published" },
-    select: { createdAt: true },
-  });
-  if (!current) return { prev: null, next: null };
-
-  const ts = current.createdAt;
-
   // createdAt 越新排越前。上一篇 = 更新的，下一篇 = 更旧的
   const [prev, next] = await Promise.all([
     prisma.article.findFirst({
@@ -49,7 +46,7 @@ async function getAdjacentArticles(source: string, currentSlug: string): Promise
         source,
         status: "published",
         slug: { not: currentSlug },
-        createdAt: { gt: ts },
+        createdAt: { gt: currentCreatedAt },
       },
       orderBy: { createdAt: "asc" },
       select: { slug: true, title: true },
@@ -59,7 +56,7 @@ async function getAdjacentArticles(source: string, currentSlug: string): Promise
         source,
         status: "published",
         slug: { not: currentSlug },
-        createdAt: { lt: ts },
+        createdAt: { lt: currentCreatedAt },
       },
       orderBy: { createdAt: "desc" },
       select: { slug: true, title: true },
@@ -90,7 +87,7 @@ export default async function ArticleDetailPage({ params }: Props) {
     notFound();
   }
 
-  const adjacent = await getAdjacentArticles(source, decodedSlug);
+  const adjacent = await getAdjacentArticles(source, decodedSlug, article.createdAt);
 
   const annotations = parseAnnotations(article.annotations);
 
