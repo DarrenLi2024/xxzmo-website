@@ -11,16 +11,9 @@ interface Props {
   params: Promise<{ source: string; slug: string }>;
 }
 
-export const dynamicParams = true;
+// 动态渲染: 不预生成静态页面，避免构建时打爆 Supabase 连接池 (pool_size: 15)
+export const dynamic = "force-dynamic";
 export const revalidate = 60;
-
-export async function generateStaticParams() {
-  const articles = await prisma.article.findMany({
-    where: { status: "published" },
-    select: { source: true, slug: true },
-  });
-  return articles.map((a) => ({ source: a.source, slug: a.slug }));
-}
 
 async function getArticle(source: string, slug: string) {
   return prisma.article.findFirst({
