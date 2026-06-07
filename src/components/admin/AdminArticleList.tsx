@@ -196,14 +196,22 @@ export function AdminArticleList({
       async onConfirm() {
         setBatchProgress({ current: 0, total: selected.size })
         const ids = Array.from(selected)
-        const results = await Promise.allSettled(
-          ids.map((id) =>
-            fetch(`/api/admin/articles/${id}`, { method: "DELETE" })
+        const CONCURRENCY = 5
+        let succeeded = 0
+        let failed = 0
+        for (let i = 0; i < ids.length; i += CONCURRENCY) {
+          const chunk = ids.slice(i, i + CONCURRENCY)
+          const results = await Promise.allSettled(
+            chunk.map((id) =>
+              fetch(`/api/admin/articles/${id}`, { method: "DELETE" })
+            )
           )
-        )
-        setBatchProgress(null)
-        const succeeded = results.filter((r) => r.status === "fulfilled" && r.value.ok).length
-        const failed = results.length - succeeded
+          for (const r of results) {
+            if (r.status === "fulfilled" && r.value.ok) succeeded++
+            else failed++
+          }
+          setBatchProgress({ current: Math.min(i + CONCURRENCY, ids.length), total: ids.length })
+        }
         if (failed > 0) {
           toastError(`已删除 ${succeeded} 篇，失败 ${failed} 篇`)
         } else {
