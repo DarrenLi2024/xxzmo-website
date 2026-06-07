@@ -167,6 +167,7 @@ export function AdminArticleList({
       async onConfirm() {
         await fetch(`/api/admin/articles/${id}`, { method: "DELETE" })
         success(`已删除「${articleTitle}」`)
+        setPage(1)
         fetchArticles()
       },
     })
@@ -201,6 +202,7 @@ export function AdminArticleList({
         } else {
           success(`已删除 ${succeeded} 篇`)
         }
+        setPage(1)
         fetchArticles()
       },
     })
