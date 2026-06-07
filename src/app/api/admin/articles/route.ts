@@ -14,8 +14,10 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get("type");
   const tag = searchParams.get("tag");
   const search = searchParams.get("search");
+  const dateFrom = searchParams.get("dateFrom");
+  const dateTo = searchParams.get("dateTo");
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-  const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "20", 10)));
+  const pageSize = Math.min(500, Math.max(1, parseInt(searchParams.get("pageSize") || "20", 10)));
 
   const where: Record<string, unknown> = {};
   if (source) where.source = source;
@@ -29,6 +31,12 @@ export async function GET(request: NextRequest) {
       { author: { contains: search } },
       { tagList: { contains: search } },
     ];
+  }
+  if (dateFrom || dateTo) {
+    const createdAtFilter: Record<string, Date> = {};
+    if (dateFrom) createdAtFilter.gte = new Date(dateFrom);
+    if (dateTo) createdAtFilter.lte = new Date(dateTo + "T23:59:59.999Z");
+    where.createdAt = createdAtFilter;
   }
 
   const [articles, total] = await Promise.all([

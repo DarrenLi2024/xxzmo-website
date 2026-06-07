@@ -72,8 +72,10 @@ export function AdminArticleList({
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState("")
   const [tagFilter, setTagFilter] = useState("")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
   const [page, setPage] = useState(1)
-  const [pageSize] = useState(20)
+  const [pageSize, setPageSize] = useState(20)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
@@ -98,6 +100,8 @@ export function AdminArticleList({
     if (searchQuery.trim()) params.set("search", searchQuery.trim())
     if (typeFilter) params.set("type", typeFilter)
     if (tagFilter.trim()) params.set("tag", tagFilter.trim())
+    if (dateFrom) params.set("dateFrom", dateFrom)
+    if (dateTo) params.set("dateTo", dateTo)
     const res = await fetch(`/api/admin/articles?${params}`)
     const data = await res.json()
     setArticles(data.articles || [])
@@ -105,19 +109,22 @@ export function AdminArticleList({
     setTotalPages(data.totalPages || 1)
     setSelected(new Set())
     setLoading(false)
-  }, [page, pageSize, searchQuery, source, statusFilter, tagFilter, typeFilter])
+  }, [page, pageSize, searchQuery, source, statusFilter, tagFilter, typeFilter, dateFrom, dateTo])
 
   useEffect(() => { fetchArticles() }, [fetchArticles])
 
   useEffect(() => {
     setPage(1)
-  }, [searchQuery, statusFilter, tagFilter, typeFilter])
+  }, [searchQuery, statusFilter, tagFilter, typeFilter, dateFrom, dateTo])
 
   function resetFilters() {
     setSearchQuery("")
     setTypeFilter("")
     setTagFilter("")
     setStatusFilter("all")
+    setDateFrom("")
+    setDateTo("")
+    setPageSize(20)
     setPage(1)
   }
 
@@ -534,6 +541,34 @@ export function AdminArticleList({
                 <Download size={14} /> 导出
               </button>
             </div>
+          </div>
+          {/* 日期筛选 + 每页条数 */}
+          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-background text-sm">
+            <span className="text-xs text-muted-foreground shrink-0">导入时间:</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+              className="h-8 rounded-md border border-border bg-background px-2.5 text-sm outline-none focus:border-primary w-36"
+            />
+            <span className="text-xs text-muted-foreground">—</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+              className="h-8 rounded-md border border-border bg-background px-2.5 text-sm outline-none focus:border-primary w-36"
+            />
+            <span className="text-xs text-muted-foreground ml-4 shrink-0">每页:</span>
+            <select
+              value={pageSize}
+              onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}
+              className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+            >
+              <option value={20}>20 篇</option>
+              <option value={50}>50 篇</option>
+              <option value={100}>100 篇</option>
+              <option value={200}>200 篇</option>
+            </select>
           </div>
           {/* Toolbar */}
           {filteredArticles.length > 0 && (
