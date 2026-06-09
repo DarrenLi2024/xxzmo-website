@@ -310,31 +310,60 @@ export function AdminArticleList({
 
     confirm({
       title: `确认对选中的 ${selected.size} 篇文章进行一键AI辅助+拼音校准？`,
-      description: "一次调用完成：注释、译文、赏析、标签 + 多音字/通假字拼音校准。5并发，200篇约3-5分钟。",
+      description: "每批处理 3 篇，自动逐批执行。完成后将显示总耗时和拼音修正统计。",
       async onConfirm() {
         setBatchUnifiedLoading(true)
         const startMs = Date.now()
         try {
-          const res = await fetch("/api/admin/articles/batch-unified", {
+          // 1. 创建任务
+          const createRes = await fetch("/api/admin/articles/batch-unified", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ articleIds: Array.from(selected), concurrency: 5 }),
+            body: JSON.stringify({
+              articleIds: Array.from(selected),
+              concurrency: 1,
+              chunkSize: 3,
+            }),
           })
-          const data = await res.json()
+          const { taskId, total } = await createRes.json()
 
-          if (data.success > 0) {
-            const durSec = ((Date.now() - startMs) / 1000).toFixed(1)
-            const pinyinInfo = data.pinyinCorrections > 0
-              ? `，拼音修正 ${data.pinyinCorrections} 项${data.pinyinUncertain > 0 ? `（待复核 ${data.pinyinUncertain} 项）` : ""}`
-              : ""
-            success(`一键完成：${data.success}/${data.total} 篇，耗时 ${durSec}s${pinyinInfo}`)
+          if (!taskId) {
+            toastError("创建任务失败")
+            setBatchUnifiedLoading(false)
+            return
           }
-          if (data.failed > 0) {
-            toastError(`失败 ${data.failed} 篇`)
+
+          // 2. 逐片执行 + 轮询进度
+          let currentPercent = 0
+          const pollIntervalMs = 2000
+
+          while (true) {
+            // 触发下一片执行
+            const execRes = await fetch(
+              `/api/admin/articles/batch-unified?taskId=${taskId}&action=execute`
+            )
+            const progress = await execRes.json()
+
+            if (progress.status === "completed") {
+              const durSec = ((Date.now() - startMs) / 1000).toFixed(1)
+              const pinyinInfo = progress.progress.pinyinCorrections > 0
+                ? `，拼音修正 ${progress.progress.pinyinCorrections} 项${progress.progress.pinyinUncertain > 0 ? `（待复核 ${progress.progress.pinyinUncertain}）` : ""}`
+                : ""
+              success(
+                `一键完成：${progress.progress.success}/${progress.progress.total} 篇，耗时 ${durSec}s${pinyinInfo}`
+              )
+              if (progress.progress.failed > 0) {
+                toastError(`失败 ${progress.progress.failed} 篇`)
+              }
+              break
+            }
+
+            // 更新进度（用 success toast 做进度提示）
+            currentPercent = progress.progress.percent
+            // 短暂等待后继续下一片
+            await new Promise((r) => setTimeout(r, pollIntervalMs))
           }
-          if (data.errors && data.errors.length > 0) {
-            console.error("Unified 处理错误:", data.errors.slice(0, 10))
-          }
+
           fetchArticles()
         } catch {
           toastError("一键AI辅助失败")
