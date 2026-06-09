@@ -39,10 +39,10 @@ export const JIGU_TAI_SYSTEM = `你是一位深谙中国古典文学的大师级
 请严格按照以下格式输出，用标记符分隔各部分：
 
 【作者】
-<作者姓名，如“王勃”>
+<作者姓名，如"王勃">
 
 【朝代】
-<朝代名称，如“唐”>
+<朝代名称，如"唐">
 
 【原文】
 <完整的原文全文>
@@ -99,7 +99,7 @@ export function buildArticleAssistMessages(input: {
   return [
     {
       role: "system" as const,
-      content: `你是一位谨严的中文文学编辑，熟悉古典诗文、现代诗文、注释、译文和赏析。只基于用户提供文本分析；涉及典故或事实时，没有来源就降低 confidence，并在 explanation 中说明“需人工核验”。${hasEvidence ? "用户已提供确认来源，注释若能由正文或摘录支撑，必须返回 sourceTitle、sourceUrl 和原文 quote。" : ""}只输出 JSON。`,
+      content: `你是一位谨严的中文文学编辑，熟悉古典诗文、现代诗文、注释、译文和赏析。只基于用户提供文本分析；涉及典故或事实时，没有来源就降低 confidence，并在 explanation 中说明"需人工核验"。${hasEvidence ? "用户已提供确认来源，注释若能由正文或摘录支撑，必须返回 sourceTitle、sourceUrl 和原文 quote。" : ""}只输出 JSON。`,
     },
     {
       role: "user" as const,
@@ -205,6 +205,99 @@ export function buildPinyinCalibrationMessages(input: {
 
 【当前正文注音】
 ${input.baselineBody}`,
+    },
+  ];
+}
+
+// ============================================================
+// UNIFIED: AI 辅助 + 拼音校准 合并为一次调用
+// ============================================================
+export function buildUnifiedAssistMessages(input: {
+  title: string;
+  author?: string;
+  body: string;
+  dateRaw?: string | null;
+  preface?: string | null;
+  postscript?: string | null;
+  notes?: string | null;
+  sourceEvidence?: {
+    title?: string;
+    url?: string;
+    excerpt?: string;
+    body?: string;
+  } | null;
+  baselineBodyPinyin: string;
+}) {
+  const fullContent = [
+    input.preface ? `【序】${input.preface}` : "",
+    `【标题】${input.title}`,
+    input.author ? `【作者】${input.author}` : "",
+    input.dateRaw ? `【日期/朝代】${input.dateRaw}` : "",
+    `【正文】${input.body}`,
+    input.postscript ? `【跋】${input.postscript}` : "",
+    input.notes ? `【已有注释/备注】${input.notes}` : "",
+    input.sourceEvidence?.title ? `【已确认来源标题】${input.sourceEvidence.title}` : "",
+    input.sourceEvidence?.url ? `【已确认来源URL】${input.sourceEvidence.url}` : "",
+    input.sourceEvidence?.excerpt ? `【来源摘录】${input.sourceEvidence.excerpt}` : "",
+  ].filter(Boolean).join("\n\n");
+  const hasEvidence = Boolean(input.sourceEvidence?.title && input.sourceEvidence?.url);
+
+  return [
+    {
+      role: "system" as const,
+      content: `你是一位谨严的中文文学编辑 + 古汉语音韵校勘专家。你的任务分两部分：
+
+**第一部分：文学分析**
+- 基于用户提供的文本进行 AI 辅助分析（注释、译文、赏析、标签）
+- 只基于提供的文本分析；涉及典故或事实时，没有来源就降低 confidence 并说明"需人工核验"
+${hasEvidence ? "- 用户已提供确认来源，注释若能由正文或摘录支撑，必须返回 sourceTitle、sourceUrl 和原文 quote" : ""}
+
+**第二部分：拼音校准**
+- 审校已有拼音中因上下文导致的错读
+- 重点检查多音字、古地名/人名/官名、通假字、专名和因句义改变的读音
+- 仅返回需要改写的片段；正确读音不要重复列出
+- pinyin 数组必须与 text 的逐字数量完全相同，使用带声调符号的拼音
+- 把无法确信的项目放入 uncertain，不要强行改写
+
+只输出严格 JSON，不输出 Markdown。`,
+    },
+    {
+      role: "user" as const,
+      content: `请对以下诗文同时进行 AI 辅助分析和拼音语境校准，严格输出 JSON：
+
+{
+  "authorSuggestion": "",
+  "dynastySuggestion": "",
+  "titleSuggestion": "",
+  "typeSuggestion": "",
+  "typeExplanation": "",
+  "annotations": [{"term": "", "explanation": "", "sourceTitle": "", "sourceUrl": "", "quote": "", "confidence": 0.7}],
+  "translation": "",
+  "appreciation": "",
+  "tagSuggestions": [],
+  "suggestions": [{"category": "", "original": "", "suggestion": "", "confidence": 0.7, "explanation": "", "applied": false}],
+  "pinyin": {
+    "summary": "",
+    "corrections": [{"field": "body", "text": "会稽", "occurrence": 1, "pinyin": ["kuài", "jī"], "reason": "", "confidence": 0.95}],
+    "uncertain": []
+  }
+}
+
+要求：
+1. 作者和朝代判断：根据原文和你的知识准确判断（如不确定留空）。
+2. 注释和赏析不得编造出处。
+3. 译文应忠实原文；现代白话诗可留空。
+4. 标签 5-8 个，从标签库选择（库外标签加 *）：
+   体裁：诗、词、赋、文、骈文、乐府、民谣、词牌、律诗、绝句、古风
+   主题：楚辞、咏物、时令、写雪、梅花、柳树、写山、黄河、写马、爱国、思乡、励志、悼亡、母亲、读书、婉约、友情、惜时、豪放、边塞、春节、清明、中秋、抒情、送别、爱情、闺怨、老师、战争、忧民、山水、闲适、怀古、写景、人物、羁旅、孤寂、哲理、田园、家庭、饮酒、登临、咏怀、梦、夜、隐逸、愁绪、赠答、怀人、行旅、贬谪、秋思、盛世、思妇、春景、秋景
+5. 改进建议只给确有依据的问题。
+6. pinyin.corrections 只列出需要修正的片段（多音字、古地名、通假字等），正确读音不要重复；occurrence 从 1 开始计数。
+7. pinyin.uncertain 放入无法确信的项目及原因。
+
+${fullContent}
+
+【当前正文注音（供拼音校准参考）】
+${input.baselineBodyPinyin}`,
     },
   ];
 }

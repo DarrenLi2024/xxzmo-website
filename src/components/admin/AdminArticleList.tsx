@@ -20,6 +20,7 @@ import {
   X,
   ArrowRightLeft,
   Trash,
+  Zap,
 } from "lucide-react"
 import type { ArticleSource } from "@/lib/constants"
 import type { ArticleAdminData } from "@/lib/serialize"
@@ -84,6 +85,7 @@ export function AdminArticleList({
   const [batchAiAssistLoading, setBatchAiAssistLoading] = useState(false)
   const [batchPinyinLoading, setBatchPinyinLoading] = useState(false)
   const [batchClearAiLoading, setBatchClearAiLoading] = useState(false)
+  const [batchUnifiedLoading, setBatchUnifiedLoading] = useState(false)
   const [batchClearPaintingLoading, setBatchClearPaintingLoading] = useState(false)
   const { success, error: toastError } = useToast()
   const { confirm } = useConfirm()
@@ -298,6 +300,46 @@ export function AdminArticleList({
           toastError("批量拼音校准失败")
         } finally {
           setBatchPinyinLoading(false)
+        }
+      },
+    })
+  }
+
+  async function handleBatchUnified() {
+    if (selected.size === 0) return
+
+    confirm({
+      title: `确认对选中的 ${selected.size} 篇文章进行一键AI辅助+拼音校准？`,
+      description: "一次调用完成：注释、译文、赏析、标签 + 多音字/通假字拼音校准。5并发，200篇约3-5分钟。",
+      async onConfirm() {
+        setBatchUnifiedLoading(true)
+        const startMs = Date.now()
+        try {
+          const res = await fetch("/api/admin/articles/batch-unified", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ articleIds: Array.from(selected), concurrency: 5 }),
+          })
+          const data = await res.json()
+
+          if (data.success > 0) {
+            const durSec = ((Date.now() - startMs) / 1000).toFixed(1)
+            const pinyinInfo = data.pinyinCorrections > 0
+              ? `，拼音修正 ${data.pinyinCorrections} 项${data.pinyinUncertain > 0 ? `（待复核 ${data.pinyinUncertain} 项）` : ""}`
+              : ""
+            success(`一键完成：${data.success}/${data.total} 篇，耗时 ${durSec}s${pinyinInfo}`)
+          }
+          if (data.failed > 0) {
+            toastError(`失败 ${data.failed} 篇`)
+          }
+          if (data.errors && data.errors.length > 0) {
+            console.error("Unified 处理错误:", data.errors.slice(0, 10))
+          }
+          fetchArticles()
+        } catch {
+          toastError("一键AI辅助失败")
+        } finally {
+          setBatchUnifiedLoading(false)
         }
       },
     })
@@ -608,6 +650,14 @@ export function AdminArticleList({
                       className="text-red hover:text-red/80 transition-colors"
                     >
                       批量删除
+                    </button>
+                    <button
+                      onClick={handleBatchUnified}
+                      disabled={batchUnifiedLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full transition-colors disabled:opacity-50 font-medium"
+                    >
+                      <Zap size={14} className={batchUnifiedLoading ? "animate-spin" : ""} />
+                      {batchUnifiedLoading ? "处理中..." : "⚡一键AI"}
                     </button>
                     <button
                       onClick={handleBatchAiAssist}

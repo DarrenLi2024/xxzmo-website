@@ -67,6 +67,40 @@ export const formatAnalysisSchema = z.object({
   explanation: z.string(),
 });
 
+// ============================================================
+// Unified Assist + Pinyin Calibration Schema (v2)
+// 将 article.assist + pinyin.calibration 合并为一次 LLM 调用
+// ============================================================
+export const unifiedAssistSchema = z.object({
+  // --- AI 辅助部分 ---
+  authorSuggestion: z.string().default(""),
+  titleSuggestion: z.string().default(""),
+  typeSuggestion: z.string().default(""),
+  typeExplanation: z.string().default(""),
+  dynastySuggestion: z.string().default(""),
+  annotations: z.array(annotationSchema).default([]),
+  translation: z.string().default(""),
+  appreciation: z.string().default(""),
+  tagSuggestions: z.array(z.string()).default([]),
+  suggestions: z.array(aiSuggestionSchema).default([]),
+  // --- 拼音校准部分 ---
+  pinyin: z.object({
+    summary: z.string().default(""),
+    corrections: z.array(z.object({
+      field: z.enum(["title", "author", "body"]),
+      text: z.string().min(1),
+      occurrence: z.number().int().min(1).default(1),
+      pinyin: z.array(z.string()),
+      reason: z.string().default("语境校准"),
+      confidence: z.number().min(0).max(1).default(0.8),
+    })).default([]),
+    uncertain: z.array(z.string()).default([]),
+  }).optional(),
+});
+
+export const UNIFIED_ASSIST_PROMPT_VERSION = "unified-assist-v1";
+
+// Legacy — 保留向后兼容
 export const pinyinCalibrationSchema = z.object({
   summary: z.string().default(""),
   corrections: z.array(z.object({
@@ -109,3 +143,4 @@ export const jiguImportSchema = z.object({
 export type ArticleAssistResult = z.infer<typeof articleAssistSchema>;
 export type JiguImportResult = z.infer<typeof jiguImportSchema>;
 export type PinyinCalibrationResult = z.infer<typeof pinyinCalibrationSchema>;
+export type UnifiedAssistResult = z.infer<typeof unifiedAssistSchema>;
