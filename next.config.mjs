@@ -35,8 +35,7 @@ const nextConfig = {
   ...(isDockerBuild ? { output: "standalone" } : {}),
   images: {
     remotePatterns: imageRemotePatterns,
-    loader: "custom",
-    loaderFile: "./src/lib/image-loader.ts",
+    unoptimized: true,
   },
   async headers() {
     return [
