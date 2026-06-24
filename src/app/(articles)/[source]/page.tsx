@@ -8,10 +8,10 @@ import { TypeFilterClient } from "./TypeFilterClient";
 
 export const revalidate = 60;
 
-export const dynamicParams = false;
+export const dynamicParams = true;
 
 export function generateStaticParams() {
-  return [{ source: "chuli" }, { source: "jigu" }];
+  return [];
 }
 
 const META: Record<string, { title: string; description: string }> = {
