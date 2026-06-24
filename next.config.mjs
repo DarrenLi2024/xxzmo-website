@@ -25,10 +25,18 @@ const imageSources = [
   ...imageRemotePatterns.map((pattern) => `${pattern.protocol}://${pattern.hostname}`),
 ];
 
+const isDockerBuild = process.env.DOCKER_BUILD === "true";
+const projectRoot = import.meta.dirname;
+
 const nextConfig = {
-  output: "standalone",
+  // Pin tracing root so a parent lockfile does not break /public image optimization.
+  outputFileTracingRoot: projectRoot,
+  // Standalone is for Docker only. On Vercel it breaks next/image for /public assets.
+  ...(isDockerBuild ? { output: "standalone" } : {}),
   images: {
     remotePatterns: imageRemotePatterns,
+    loader: "custom",
+    loaderFile: "./src/lib/image-loader.ts",
   },
   async headers() {
     return [
