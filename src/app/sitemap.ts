@@ -1,7 +1,7 @@
 import { MetadataRoute } from "next";
 import { prisma } from "@/lib/prisma";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -14,17 +14,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/search`, lastModified: new Date(), changeFrequency: "monthly" as const, priority: 0.3 },
   ];
 
-  const articles = await prisma.article.findMany({
-    where: { status: "published" },
-    select: { slug: true, source: true, updatedAt: true },
-  });
+  try {
+    const articles = await prisma.article.findMany({
+      where: { status: "published" },
+      select: { slug: true, source: true, updatedAt: true },
+    });
 
-  const articleRoutes = articles.map((a) => ({
-    url: `${baseUrl}/${a.source}/${a.slug}`,
-    lastModified: a.updatedAt,
-    changeFrequency: "monthly" as const,
-    priority: 0.6,
-  }));
+    const articleRoutes = articles.map((a) => ({
+      url: `${baseUrl}/${a.source}/${a.slug}`,
+      lastModified: a.updatedAt,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    }));
 
-  return [...staticRoutes, ...articleRoutes];
+    return [...staticRoutes, ...articleRoutes];
+  } catch {
+    return staticRoutes;
+  }
 }
