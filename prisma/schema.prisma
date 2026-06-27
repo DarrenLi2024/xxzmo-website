@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("POSTGRES_PRISMA_URL")
+  url      = env("DATABASE_URL")
 }
 
 model Article {
@@ -48,6 +48,10 @@ model Article {
   rawContent  String?
   aiRawOutput String?
   confidence  Float?
+  aiStatus    String?
+  aiConfidence Float?
+  aiRiskLevel String?
+  aiUpdatedAt DateTime?
   likeCount   Int       @default(0)
 
   // === Indexes ===
@@ -58,6 +62,8 @@ model Article {
   @@index([createdAt])
   @@index([source, status, createdAt])
   @@index([source, status, slug])
+  @@index([source, aiStatus])
+  @@index([aiStatus, aiUpdatedAt])
 }
 
 model Tag {
@@ -167,6 +173,100 @@ model AiTaskLog {
 
   @@index([taskName, createdAt])
   @@index([success, createdAt])
+}
+
+model AiWorkflowRun {
+  id          String    @id @default(cuid())
+  articleId   String?
+  batchId     String?
+  source      String
+  status      String    @default("queued")
+  priority    Int       @default(0)
+  policy      String    @default("standard")
+  progress    Int       @default(0)
+  confidence  Float?
+  riskLevel   String?
+  error       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+  steps       AiWorkflowStep[]
+
+  @@index([status, priority, createdAt])
+  @@index([articleId])
+  @@index([batchId])
+}
+
+model AiWorkflowStep {
+  id          String   @id @default(cuid())
+  runId       String
+  run         AiWorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  name        String
+  status      String   @default("queued")
+  order       Int
+  attempt     Int      @default(0)
+  maxAttempts Int      @default(3)
+  input       String?
+  output      String?
+  error       String?
+  durationMs  Int?
+  aiLogId     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([runId, order])
+  @@index([status, updatedAt])
+}
+
+model AiArtifact {
+  id         String   @id @default(cuid())
+  runId      String
+  stepId     String?
+  articleId  String
+  type       String   // annotations | translation | appreciation | pinyin | review | format
+  version    Int      @default(1)
+  content    String   // JSON string of the artifact
+  confidence Float?
+  provider   String?
+  model      String?
+  promptVersion String?
+  createdAt  DateTime @default(now())
+
+  @@index([articleId, type, version])
+  @@index([runId])
+  @@index([articleId, createdAt])
+}
+
+model AiDecision {
+  id         String   @id @default(cuid())
+  runId      String
+  articleId  String
+  stepName   String   // decision.route | dedupe.check | article.review
+  decision   String   // ready | review | failed | skipped
+  confidence Float?
+  reasons    String?  // JSON array of reasons
+  createdAt  DateTime @default(now())
+
+  @@index([articleId, stepName])
+  @@index([runId])
+  @@index([articleId, decision])
+}
+
+model AiFeedback {
+  id            String   @id @default(cuid())
+  artifactId    String?
+  runId         String
+  articleId     String
+  action        String   // adopt | reject | modify
+  reason        String?
+  contentBefore String?  // Previous content (for modify)
+  contentAfter  String?  // New content (for modify)
+  createdAt     DateTime @default(now())
+
+  @@index([articleId])
+  @@index([runId])
+  @@index([articleId, action])
 }
 
 model PinyinDict {

@@ -28,6 +28,8 @@ import { useToast } from "@/components/admin/Toast"
 import { useConfirm } from "@/components/admin/ConfirmDialog"
 import { TableSkeleton } from "@/components/admin/Skeleton"
 import { EmptyState } from "@/components/admin/EmptyState"
+import { AiStatsPanel } from "@/components/admin/AiStatsPanel"
+import { AiWorkflowTrace } from "@/components/admin/AiWorkflowTrace"
 
 interface DuplicatePair {
   id1: string
@@ -70,6 +72,7 @@ export function AdminArticleList({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null)
   const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "review" | "published">("all")
+  const [aiStatusFilter, setAiStatusFilter] = useState<"all" | "queued" | "running" | "review" | "ready" | "failed" | "none">("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState("")
   const [tagFilter, setTagFilter] = useState("")
@@ -87,10 +90,11 @@ export function AdminArticleList({
   const [batchClearAiLoading, setBatchClearAiLoading] = useState(false)
   const [batchUnifiedLoading, setBatchUnifiedLoading] = useState(false)
   const [batchClearPaintingLoading, setBatchClearPaintingLoading] = useState(false)
+  const [traceRunId, setTraceRunId] = useState<string | null>(null)
   const { success, error: toastError } = useToast()
   const { confirm } = useConfirm()
 
-  const filteredArticles = articles
+  const filteredArticles = articles;
 
   const fetchArticles = useCallback(async () => {
     const params = new URLSearchParams({
@@ -102,6 +106,7 @@ export function AdminArticleList({
     if (searchQuery.trim()) params.set("search", searchQuery.trim())
     if (typeFilter) params.set("type", typeFilter)
     if (tagFilter.trim()) params.set("tag", tagFilter.trim())
+    if (aiStatusFilter !== "all") params.set("aiStatus", aiStatusFilter)
     if (dateFrom) params.set("dateFrom", dateFrom)
     if (dateTo) params.set("dateTo", dateTo)
     const res = await fetch(`/api/admin/articles?${params}`)
@@ -111,19 +116,20 @@ export function AdminArticleList({
     setTotalPages(data.totalPages || 1)
     setSelected(new Set())
     setLoading(false)
-  }, [page, pageSize, searchQuery, source, statusFilter, tagFilter, typeFilter, dateFrom, dateTo])
+  }, [aiStatusFilter, page, pageSize, searchQuery, source, statusFilter, tagFilter, typeFilter, dateFrom, dateTo])
 
   useEffect(() => { fetchArticles() }, [fetchArticles])
 
   useEffect(() => {
     setPage(1)
-  }, [searchQuery, statusFilter, tagFilter, typeFilter, dateFrom, dateTo])
+  }, [aiStatusFilter, searchQuery, statusFilter, tagFilter, typeFilter, dateFrom, dateTo])
 
   function resetFilters() {
     setSearchQuery("")
     setTypeFilter("")
     setTagFilter("")
     setStatusFilter("all")
+    setAiStatusFilter("all")
     setDateFrom("")
     setDateTo("")
     setPageSize(20)
@@ -150,6 +156,36 @@ export function AdminArticleList({
     link.download = `${source}-articles.csv`
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  function getAiStatusLabel(article: ArticleAdminData) {
+    if (!article.aiStatus) return "未处理"
+    const labels: Record<string, string> = {
+      queued: "排队中",
+      running: "处理中",
+      review: "待复核",
+      ready: "可发布",
+      failed: "失败",
+      skipped: "已跳过",
+    }
+    return labels[article.aiStatus] || article.aiStatus
+  }
+
+  function getAiStatusClass(article: ArticleAdminData) {
+    switch (article.aiStatus) {
+      case "queued":
+        return "bg-sky-50 text-sky-700"
+      case "running":
+        return "bg-amber/10 text-amber"
+      case "review":
+        return "bg-blue/10 text-blue"
+      case "ready":
+        return "bg-green/10 text-green"
+      case "failed":
+        return "bg-red/10 text-red"
+      default:
+        return "bg-muted text-muted-foreground"
+    }
   }
 
   function toggleSelect(id: string) {
@@ -374,6 +410,110 @@ export function AdminArticleList({
     })
   }
 
+  async function handleRunAiWorker() {
+    setBatchUnifiedLoading(true)
+    try {
+      const res = await fetch("/api/admin/ai-workflows/worker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxRuns: 1 }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error || "AI 任务推进失败")
+        return
+      }
+      success(data.claimed > 0 ? `已推进 ${data.claimed} 个 AI 任务` : "暂无待执行 AI 任务")
+      fetchArticles()
+    } catch {
+      toastError("AI 任务推进失败")
+    } finally {
+      setBatchUnifiedLoading(false)
+    }
+  }
+
+  async function handleAddToPipeline() {
+    if (selected.size === 0) return
+    confirm({
+      title: `确认将选中的 ${selected.size} 篇文章加入 AI 流水线？`,
+      description: "文章将自动进入后台 AI 处理队列，无需等待页面打开。",
+      async onConfirm() {
+        try {
+          const res = await fetch("/api/admin/ai-workflows", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ articleIds: Array.from(selected), source }),
+          })
+          const data = await res.json()
+          if (data.queued > 0) {
+            success(`已加入 ${data.queued} 篇文章到 AI 流水线`)
+          }
+          if (data.failed > 0) {
+            toastError(`${data.failed} 篇加入失败`)
+          }
+          fetchArticles()
+        } catch {
+          toastError("加入 AI 流水线失败")
+        }
+      },
+    })
+  }
+
+  async function handleRetryFailed() {
+    if (selected.size === 0) return
+    const failedIds = filteredArticles
+      .filter((a) => selected.has(a.id) && a.aiStatus === "failed")
+      .map((a) => a.id)
+    if (failedIds.length === 0) {
+      toastError("选中的文章中没有失败项")
+      return
+    }
+    confirm({
+      title: `确认重试 ${failedIds.length} 篇失败文章的 AI 任务？`,
+      description: "将重置失败步骤并重新加入队列。",
+      async onConfirm() {
+        try {
+          let retried = 0
+          for (const id of failedIds) {
+            const run = await fetch(`/api/admin/ai-workflows?batchId=`, {
+              headers: { "Content-Type": "application/json" },
+            }).then((r) => r.json())
+            // Find the latest run for this article
+            const articleRun = run.runs?.find((r: { articleId: string }) => r.articleId === id)
+            if (articleRun) {
+              await fetch(`/api/admin/ai-workflows/${articleRun.id}/retry`, { method: "POST" })
+              retried++
+            }
+          }
+          success(`已重试 ${retried} 篇文章`)
+          fetchArticles()
+        } catch {
+          toastError("重试失败")
+        }
+      },
+    })
+  }
+
+  function handleShowReviewOnly() {
+    setAiStatusFilter("review")
+    setPage(1)
+  }
+
+  async function openWorkflowTrace(articleId: string) {
+    try {
+      const res = await fetch(`/api/admin/ai-workflows?batchId=`)
+      const data = await res.json()
+      const run = data.runs?.find((r: { articleId: string }) => r.articleId === articleId)
+      if (run) {
+        setTraceRunId(run.id)
+      } else {
+        toastError("未找到该文章的 AI 任务记录")
+      }
+    } catch {
+      toastError("获取轨迹失败")
+    }
+  }
+
   async function handleClearAiConfig() {
     if (selected.size === 0) return
     
@@ -562,12 +702,14 @@ export function AdminArticleList({
         </div>
       </div>
 
+      <AiStatsPanel />
+
       {loading ? (
         <TableSkeleton rows={5} />
       ) : (
         <div className="border border-border rounded-lg overflow-hidden bg-card">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 px-4 py-3 border-b border-border bg-background">
-            <div className="lg:col-span-4 relative">
+            <div className="lg:col-span-3 relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={searchQuery}
@@ -586,11 +728,24 @@ export function AdminArticleList({
               <option value="review">待校审</option>
               <option value="published">已刊</option>
             </select>
+            <select
+              value={aiStatusFilter}
+              onChange={(event) => setAiStatusFilter(event.target.value as typeof aiStatusFilter)}
+              className="lg:col-span-2 h-9 rounded-md border border-border bg-background px-3 text-sm"
+            >
+              <option value="all">全部 AI 状态</option>
+              <option value="none">未处理</option>
+              <option value="queued">AI排队</option>
+              <option value="running">AI处理中</option>
+              <option value="review">待复核</option>
+              <option value="ready">可发布</option>
+              <option value="failed">处理失败</option>
+            </select>
             <input
               value={typeFilter}
               onChange={(event) => setTypeFilter(event.target.value)}
               placeholder="文体"
-              className="lg:col-span-2 h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+              className="lg:col-span-1 h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary"
             />
             <input
               value={tagFilter}
@@ -640,6 +795,14 @@ export function AdminArticleList({
               <option value={100}>100 篇</option>
               <option value={200}>200 篇</option>
             </select>
+            <button
+              onClick={handleRunAiWorker}
+              disabled={batchUnifiedLoading}
+              className="h-8 px-3 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Zap size={14} className={batchUnifiedLoading ? "animate-spin" : ""} />
+              推进AI任务
+            </button>
           </div>
           {/* Toolbar */}
           {filteredArticles.length > 0 && (
@@ -720,6 +883,20 @@ export function AdminArticleList({
                       <Loader2 size={14} className={batchClearPaintingLoading ? "animate-spin" : ""} />
                       {batchClearPaintingLoading ? "清除中..." : "清除配图"}
                     </button>
+                    <button
+                      onClick={handleAddToPipeline}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-full transition-colors font-medium"
+                    >
+                      <Zap size={14} />
+                      加入AI流水线
+                    </button>
+                    <button
+                      onClick={handleRetryFailed}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-full transition-colors font-medium"
+                    >
+                      <RefreshCw size={14} />
+                      重试失败
+                    </button>
                   </>
                 )}
               </div>
@@ -731,6 +908,17 @@ export function AdminArticleList({
                 >
                   <AlertTriangle size={14} />
                   {detectingDuplicates ? "检测中..." : "去重检测"}
+                </button>
+                <button
+                  onClick={handleShowReviewOnly}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full transition-colors ${
+                    aiStatusFilter === "review"
+                      ? "text-blue-700 bg-blue-100"
+                      : "text-blue-600 bg-blue/10 hover:bg-blue/20"
+                  }`}
+                >
+                  <AlertTriangle size={14} />
+                  只看复核
                 </button>
                 <button
                   onClick={fetchArticles}
@@ -746,9 +934,10 @@ export function AdminArticleList({
           <div className="grid grid-cols-12 gap-4 px-4 py-3 text-xs font-medium text-muted-foreground border-b border-border bg-muted/20">
             <span className="col-span-1">配图</span>
             <span className="col-span-3">标题</span>
-            <span className="col-span-2">{col2Header}</span>
+            <span className="col-span-1">{col2Header}</span>
             <span className="col-span-2">导入时间</span>
             <span className="col-span-1">状态</span>
+            <span className="col-span-1">AI</span>
             <span className="col-span-1">标签</span>
             <span className="col-span-2 text-right">操作</span>
           </div>
@@ -790,7 +979,7 @@ export function AdminArticleList({
                     />
                     {a.title}
                   </span>
-                  <span className="col-span-2 text-muted-foreground">{a[col2Key]}</span>
+                  <span className="col-span-1 text-muted-foreground truncate">{a[col2Key]}</span>
                   <span className="col-span-2 text-xs text-muted-foreground">
                     {new Date(a.createdAt).toLocaleDateString('zh-CN')}
                   </span>
@@ -806,6 +995,25 @@ export function AdminArticleList({
                     >
                       {a.status === "published" ? "发布确认" : a.status === "review" ? "待校对" : "草稿"}
                     </span>
+                  </span>
+                  <span className="col-span-1">
+                    <button
+                      onClick={() => openWorkflowTrace(a.id)}
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap cursor-pointer hover:opacity-80 transition-opacity ${getAiStatusClass(a)}`}
+                      title={a.aiConfidence ? `置信度 ${Math.round(a.aiConfidence * 100)}%` : undefined}
+                    >
+                      {getAiStatusLabel(a)}
+                      {a.aiConfidence !== null && a.aiConfidence !== undefined && (
+                        <span className="ml-1 opacity-70">{Math.round(a.aiConfidence * 100)}%</span>
+                      )}
+                    </button>
+                    {a.aiRiskLevel && a.aiRiskLevel !== "low" && (
+                      <span className={`ml-1 text-[10px] ${
+                        a.aiRiskLevel === "high" ? "text-red-500" : "text-amber-600"
+                      }`}>
+                        {a.aiRiskLevel === "high" ? "高风险" : "中风险"}
+                      </span>
+                    )}
                   </span>
                   <span className="col-span-1 text-xs text-muted-foreground truncate">
                     {a.tags.slice(0, 2).join(" · ")}
@@ -974,6 +1182,11 @@ export function AdminArticleList({
             </div>
           </div>
         </div>
+      )}
+
+      {/* AI 工作流轨迹弹窗 */}
+      {traceRunId && (
+        <AiWorkflowTrace runId={traceRunId} onClose={() => setTraceRunId(null)} />
       )}
     </div>
   )

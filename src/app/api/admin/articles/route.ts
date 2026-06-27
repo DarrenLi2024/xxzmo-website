@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { createArticleWithTags } from "@/lib/tag-service";
 import { serializeArticleAdmin } from "@/lib/serialize";
 import { logAdminAction } from "@/lib/admin-log";
+import { createArticleWorkflow } from "@/lib/ai-workflow";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -16,12 +17,14 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search");
   const dateFrom = searchParams.get("dateFrom");
   const dateTo = searchParams.get("dateTo");
+  const aiStatus = searchParams.get("aiStatus") || "all";
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const pageSize = Math.min(500, Math.max(1, parseInt(searchParams.get("pageSize") || "20", 10)));
 
   const where: Record<string, unknown> = {};
   if (source) where.source = source;
   if (status !== "all") where.status = status;
+  if (aiStatus !== "all") where.aiStatus = aiStatus === "none" ? null : aiStatus;
   if (type) where.type = type;
   if (tag) where.tags = { some: { tag: { name: tag } } };
   if (search) {
@@ -97,6 +100,15 @@ export async function POST(request: NextRequest) {
       summary: `创建${source === "jigu" ? "辑古录" : "樗栎集"}「${article.title}」`,
       metadata: { source, status, tagCount: tags.length },
     });
+
+    const shouldCreateWorkflow = body.autoAiWorkflow !== false && source === "chuli";
+    if (shouldCreateWorkflow) {
+      await createArticleWorkflow({
+        articleId: article.id,
+        source,
+        policy: "article-create",
+      });
+    }
 
     return NextResponse.json(article, { status: 201 });
   } catch (error) {

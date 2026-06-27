@@ -3,6 +3,7 @@ import { generateSlug, generateContentBasedSlug } from "@/lib/utils";
 import { createArticleWithTags } from "@/lib/tag-service";
 import { SITE } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
+import { createArticleWorkflows } from "@/lib/ai-workflow";
 
 interface ParsedArticle {
   title: string;
@@ -1219,7 +1220,7 @@ function parseSingleArticle(block: string): ParsedArticle | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const { text, separator, defaultType, defaultTags, defaultStatus } = await request.json();
+    const { text, separator, defaultType, defaultTags, defaultStatus, autoAiWorkflow = true } = await request.json();
 
     if (!text || typeof text !== "string" || !text.trim()) {
       return NextResponse.json({ error: "请输入要导入的文本" }, { status: 400 });
@@ -1347,9 +1348,23 @@ export async function POST(request: NextRequest) {
     }
 
     const importTime = new Date().toISOString();
+    const workflowBatchId = `chuli_import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const workflowResults = autoAiWorkflow && created.length > 0
+      ? await createArticleWorkflows(created.map((article) => article.id), {
+        batchId: workflowBatchId,
+        source: "chuli",
+        policy: "import",
+      })
+      : [];
     
     return NextResponse.json({
       articles: created,
+      aiWorkflow: {
+        enabled: Boolean(autoAiWorkflow),
+        batchId: autoAiWorkflow ? workflowBatchId : null,
+        queued: workflowResults.filter((item) => item.status === "queued").length,
+        failed: workflowResults.filter((item) => item.status === "failed").length,
+      },
       duplicates: importDuplicates,
       skipped,
       existingMatches: similarExistingMatches.map((m) => ({

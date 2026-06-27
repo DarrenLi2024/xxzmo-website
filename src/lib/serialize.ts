@@ -63,6 +63,10 @@ export interface ArticleAdminData {
   rawContent: string | null;
   aiRawOutput: string | null;
   confidence: number | null;
+  aiStatus: string | null;
+  aiConfidence: number | null;
+  aiRiskLevel: string | null;
+  aiUpdatedAt: string | null;
   tags: string[];
   status: string;
   tagList: string;
@@ -152,6 +156,10 @@ export function serializeArticleAdmin(a: ArticleWithTags): ArticleAdminData {
     rawContent: a.rawContent,
     aiRawOutput: a.aiRawOutput,
     confidence: a.confidence,
+    aiStatus: a.aiStatus,
+    aiConfidence: a.aiConfidence,
+    aiRiskLevel: a.aiRiskLevel,
+    aiUpdatedAt: a.aiUpdatedAt?.toISOString() ?? null,
     tags: a.tags.map((t) => t.tag.name),
     status: a.status,
     tagList: a.tagList,

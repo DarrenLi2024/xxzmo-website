@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { verifyAdminToken, createTokenCookieOptions } from "@/lib/auth";
+import { verifyAdminToken } from "@/lib/auth";
+import { checkCronAuth } from "@/lib/cron-auth";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -18,6 +19,13 @@ export async function middleware(request: NextRequest) {
 
   // Protect admin API routes
   if (pathname.startsWith("/api/admin")) {
+    // Allow cron requests for the worker endpoint
+    if (pathname === "/api/admin/ai-workflows/worker") {
+      if (checkCronAuth(request)) {
+        return NextResponse.next();
+      }
+    }
+
     const payload = token ? await verifyAdminToken(token) : null;
     if (!payload) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

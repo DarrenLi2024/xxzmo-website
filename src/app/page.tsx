@@ -6,7 +6,9 @@ import { BlogTopicGarden } from "@/components/home/BlogTopicGarden";
 import { DailyQuoteSection } from "@/components/home/DailyQuoteSection";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const revalidate = 60;
+// 动态渲染，避免构建时连接数据库
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function HomePage() {
   const [stats, hero] = await Promise.all([

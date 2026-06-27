@@ -84,6 +84,8 @@ export default function AdminChuliImportPage() {
     similarMatchCount: number;
   } | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "published">("all");
+  const [autoAiWorkflow, setAutoAiWorkflow] = useState(true);
+  const [aiWorkflow, setAiWorkflow] = useState<{ enabled: boolean; batchId: string | null; queued: number; failed: number } | null>(null);
 
   async function handleImport() {
     if (!text.trim()) return;
@@ -93,6 +95,7 @@ export default function AdminChuliImportPage() {
     setDuplicates(null);
     setExistingMatches(null);
     setSkipped(null);
+    setAiWorkflow(null);
 
     try {
       const res = await fetch("/api/admin/chuli-import", {
@@ -103,6 +106,7 @@ export default function AdminChuliImportPage() {
           separator,
           defaultType,
           defaultStatus,
+          autoAiWorkflow,
         }),
       });
 
@@ -120,6 +124,7 @@ export default function AdminChuliImportPage() {
         });
         setImportTime(data.importTime || null);
         setImportStats(data.importStats || null);
+        setAiWorkflow(data.aiWorkflow || null);
         setText("");
         const msg = data.count > 0 ? `成功导入 ${data.count} 篇` : "未导入任何文章";
         success(msg);
@@ -243,6 +248,17 @@ export default function AdminChuliImportPage() {
           </div>
         </div>
 
+        <label className="inline-flex items-center gap-2 text-sm text-ink-600">
+          <input
+            type="checkbox"
+            checked={autoAiWorkflow}
+            onChange={(e) => setAutoAiWorkflow(e.target.checked)}
+            disabled={importing}
+            className="h-4 w-4 rounded border-paper-300"
+          />
+          导入后自动进入 AI 流水线
+        </label>
+
         {error && <p className="text-sm text-red">{error}</p>}
 
         <button
@@ -264,6 +280,14 @@ export default function AdminChuliImportPage() {
         {/* 导入结果 */}
         {results && (
           <div className="mt-6 space-y-4">
+            {aiWorkflow?.enabled && (
+              <div className="rounded-lg border border-accent/20 bg-accent/5 p-4 text-sm text-ink-700">
+                AI 流水线已创建：{aiWorkflow.queued} 篇已入队
+                {aiWorkflow.failed > 0 ? `，${aiWorkflow.failed} 篇入队失败` : ""}
+                {aiWorkflow.batchId ? `。批次：${aiWorkflow.batchId}` : ""}
+              </div>
+            )}
+
             {/* 导入统计概览 */}
             {importTime && importStats && (
               <div className="flex flex-wrap items-center gap-4 p-3 bg-paper-100 rounded-md text-xs">

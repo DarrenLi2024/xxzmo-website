@@ -7,8 +7,10 @@ interface Props {
   params: Promise<{ source: string; slug: string }>;
 }
 
+// 动态渲染，避免构建时连接数据库
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export const dynamicParams = true;
-export const revalidate = 60;
 
 async function getArticle(source: string, slug: string) {
   return prisma.article.findFirst({

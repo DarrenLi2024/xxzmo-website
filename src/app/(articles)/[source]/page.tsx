@@ -6,8 +6,9 @@ import { ArticleCard } from "@/components/article/ArticleCard";
 import { TypeTabBar } from "@/components/common/TypeTabBar";
 import { TypeFilterClient } from "./TypeFilterClient";
 
-export const revalidate = 60;
-
+// 动态渲染，避免构建时连接数据库
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export const dynamicParams = true;
 
 export function generateStaticParams() {
