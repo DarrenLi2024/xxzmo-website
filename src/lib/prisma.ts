@@ -22,22 +22,26 @@ function createPrismaClient() {
 
   if (isPostgres) {
     try {
-      const [base, qs = ""] = connectionString.split("?");
-      const params = new URLSearchParams(qs);
-      
+      const urlObj = new URL(connectionString);
+
       // Session mode pooler (port 5432): no pgbouncer flag needed
-      if (connectionString.includes(":5432")) {
-        params.delete("pgbouncer");
+      if (urlObj.port === "5432") {
+        urlObj.searchParams.delete("pgbouncer");
       } else {
         // Transaction mode pooler (port 6543): needs pgbouncer=true
-        if (!params.has("pgbouncer")) params.set("pgbouncer", "true");
+        if (!urlObj.searchParams.has("pgbouncer")) {
+          urlObj.searchParams.set("pgbouncer", "true");
+        }
       }
-      
-      if (!params.has("connection_limit")) params.set("connection_limit", "1");
-      if (!params.has("pool_timeout")) params.set("pool_timeout", "20");
-      
-      const newQs = params.toString();
-      url = newQs ? `${base}?${newQs}` : base;
+
+      if (!urlObj.searchParams.has("connection_limit")) {
+        urlObj.searchParams.set("connection_limit", "1");
+      }
+      if (!urlObj.searchParams.has("pool_timeout")) {
+        urlObj.searchParams.set("pool_timeout", "20");
+      }
+
+      url = urlObj.toString();
     } catch {
       url = connectionString;
     }
