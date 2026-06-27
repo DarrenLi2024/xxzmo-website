@@ -23,13 +23,18 @@ export function generateStaticParams() {
 }
 
 const getArticle = cache(async (source: string, slug: string) => {
-  return prisma.article.findFirst({
-    where: { slug, source, status: "published" },
-    include: {
-      tags: { include: { tag: true } },
-      painting: true,
-    },
-  });
+  try {
+    return prisma.article.findFirst({
+      where: { slug, source, status: "published" },
+      include: {
+        tags: { include: { tag: true } },
+        painting: true,
+      },
+    });
+  } catch (e: any) {
+    console.error("[getArticle] failed:", e.message);
+    return null;
+  }
 });
 
 interface AdjacentArticle {
@@ -41,31 +46,34 @@ async function getAdjacentArticles(source: string, currentSlug: string, currentC
   prev: AdjacentArticle | null;
   next: AdjacentArticle | null;
 }> {
-  // createdAt 越新排越前。上一篇 = 更新的，下一篇 = 更旧的
-  const [prev, next] = await Promise.all([
-    prisma.article.findFirst({
-      where: {
-        source,
-        status: "published",
-        slug: { not: currentSlug },
-        createdAt: { gt: currentCreatedAt },
-      },
-      orderBy: { createdAt: "asc" },
-      select: { slug: true, title: true },
-    }),
-    prisma.article.findFirst({
-      where: {
-        source,
-        status: "published",
-        slug: { not: currentSlug },
-        createdAt: { lt: currentCreatedAt },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { slug: true, title: true },
-    }),
-  ]);
-
-  return { prev, next };
+  try {
+    const [prev, next] = await Promise.all([
+      prisma.article.findFirst({
+        where: {
+          source,
+          status: "published",
+          slug: { not: currentSlug },
+          createdAt: { gt: currentCreatedAt },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { slug: true, title: true },
+      }),
+      prisma.article.findFirst({
+        where: {
+          source,
+          status: "published",
+          slug: { not: currentSlug },
+          createdAt: { lt: currentCreatedAt },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { slug: true, title: true },
+      }),
+    ]);
+    return { prev, next };
+  } catch (e: any) {
+    console.error("[getAdjacentArticles] failed:", e.message);
+    return { prev: null, next: null };
+  }
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

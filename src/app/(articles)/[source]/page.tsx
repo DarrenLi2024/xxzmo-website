@@ -32,13 +32,18 @@ interface Props {
 }
 
 async function getArticles(source: string) {
-  const articles = await prisma.article.findMany({
-    where: { source, status: "published" },
-    include: { tags: { include: { tag: true } }, painting: true },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
-  return articles.map((a) => serializeArticleListItem(a, 200));
+  try {
+    const articles = await prisma.article.findMany({
+      where: { source, status: "published" },
+      include: { tags: { include: { tag: true } }, painting: true },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    return articles.map((a) => serializeArticleListItem(a, 200));
+  } catch (e: any) {
+    console.error("[getArticles] failed:", e.message, e.stack);
+    return [];
+  }
 }
 
 export default async function SourceListPage({ params }: Props) {
