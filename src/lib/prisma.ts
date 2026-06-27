@@ -44,7 +44,7 @@ function createPrismaClient() {
   }
 
   return new PrismaClient({
-    datasources: { db: { url } },
+    datasourceUrl: url,
     log: ["error"],
   });
 }
