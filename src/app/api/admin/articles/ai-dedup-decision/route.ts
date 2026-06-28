@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { callLlmDetailed } from "@/lib/llm-service";
+import { runAiTask } from "@/lib/ai-task";
 import { DEDUP_DECISION_SYSTEM, DEDUP_DECISION_USER } from "@/lib/prompts";
 import { dedupDecisionSchema } from "@/lib/ai-schemas";
+
+const DEDUP_DECISION_PROMPT_VERSION = "dedup-decision-v1";
 
 interface DuplicatePair {
   id1: string;
@@ -25,23 +27,6 @@ interface DecisionResult {
   confidence: number;
   reason: string;
   error?: string;
-}
-
-function parseJsonObject(raw: string): unknown {
-  const trimmed = raw.trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const match = trimmed.match(/\{[\s\S]*\}/);
-    if (match) {
-      try {
-        return JSON.parse(match[0]);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
 }
 
 export async function POST(request: Request) {
@@ -119,20 +104,21 @@ export async function POST(request: Request) {
           },
         ];
 
-        const llmResult = await callLlmDetailed(messages, {
-          temperature: 0.3,
-          maxTokens: 512,
-          timeoutMs: 30000,
-          maxRetries: 2,
-          maxProviders: 3,
-        });
+        const aiResult = await runAiTask(
+          "article.dedup.decision",
+          messages,
+          dedupDecisionSchema,
+          {
+            promptVersion: DEDUP_DECISION_PROMPT_VERSION,
+            temperature: 0.3,
+            maxTokens: 512,
+            timeoutMs: 30000,
+            maxRetries: 2,
+            maxProviders: 3,
+          }
+        );
 
-        const parsed = parseJsonObject(llmResult.content);
-        if (!parsed) {
-          throw new Error("LLM 响应 JSON 解析失败");
-        }
-
-        const result = dedupDecisionSchema.parse(parsed);
+        const result = aiResult.data;
         decisions.push({
           pair,
           keepId: result.keepId,

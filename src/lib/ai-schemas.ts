@@ -140,6 +140,13 @@ export const jiguImportSchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
+/** 辑古台 LLM 来源检索：仅提取原文，不含注释/译文 */
+export const jiguSourceExtractSchema = z.object({
+  title: z.string().default(""),
+  author: z.string().default("佚名"),
+  body: z.string().min(20),
+});
+
 export type ArticleAssistResult = z.infer<typeof articleAssistSchema>;
 export type JiguImportResult = z.infer<typeof jiguImportSchema>;
 export type PinyinCalibrationResult = z.infer<typeof pinyinCalibrationSchema>;
@@ -156,3 +163,15 @@ export const dedupDecisionSchema = z.object({
 });
 
 export type DedupDecisionResult = z.infer<typeof dedupDecisionSchema>;
+
+export const paintingAnalysisSchema = z.object({
+  keywords: z.array(z.string()).default([]),
+  theme: z.string().default("山水"),
+  mood: z.string().default("恬淡"),
+  style: z.string().default("水墨"),
+  matchReason: z.string().default("符合诗文意境"),
+  imagery: z.array(z.string()).default([]),
+  searchTerms: z.array(z.string()).default([]),
+});
+
+export type PaintingAnalysisResult = z.infer<typeof paintingAnalysisSchema>;

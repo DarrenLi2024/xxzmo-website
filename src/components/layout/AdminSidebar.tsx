@@ -18,6 +18,8 @@ import {
   Moon,
   Search,
   FileText,
+  AlertCircle,
+  TrendingUp,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 
@@ -33,6 +35,8 @@ const iconMap = {
   Settings,
   Search,
   FileText,
+  AlertCircle,
+  TrendingUp,
 }
 
 const groups = [
@@ -58,6 +62,8 @@ const groups = [
   {
     label: "审校运营",
     items: [
+      { label: "AI 复核队列", href: "/admin/ai-review", icon: "AlertCircle" },
+      { label: "AI 质量看板", href: "/admin/ai-quality", icon: "TrendingUp" },
       { label: "审计报告", href: "/admin/audit", icon: "FileText" },
       { label: "读音审校", href: "/admin/pinyin-dict", icon: "Volume2" },
     ],

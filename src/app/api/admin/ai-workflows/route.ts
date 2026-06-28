@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createArticleWorkflows, getWorkflowSummary } from "@/lib/ai-workflow";
+import { kickAiWorker } from "@/lib/ai-worker-kick";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const batchId = searchParams.get("batchId");
+    const articleId = searchParams.get("articleId");
+
+    if (articleId) {
+      const run = await prisma.aiWorkflowRun.findFirst({
+        where: { articleId },
+        orderBy: { createdAt: "desc" },
+        include: { steps: { orderBy: { order: "asc" } } },
+      });
+      return NextResponse.json({ runs: run ? [run] : [], total: run ? 1 : 0 });
+    }
+
     const summary = await getWorkflowSummary(batchId);
     return NextResponse.json(summary);
   } catch (error) {
@@ -37,12 +50,20 @@ export async function POST(request: NextRequest) {
       priority: typeof body.priority === "number" ? body.priority : undefined,
     });
 
+    const queued = results.filter((item) => item.status === "queued").length;
+    if (queued > 0) {
+      kickAiWorker(Math.min(queued, 3));
+    }
+
     return NextResponse.json({
       batchId,
       total: articleIds.length,
-      queued: results.filter((item) => item.status === "queued").length,
+      queued,
       failed: results.filter((item) => item.status === "failed").length,
       results,
+      message: queued > 0
+        ? `已加入 ${queued} 篇到 AI 流水线，后台自动处理中`
+        : "未成功加入流水线",
     }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "创建 AI 流水线失败";

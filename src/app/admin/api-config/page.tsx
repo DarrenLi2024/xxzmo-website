@@ -33,6 +33,14 @@ interface AiTaskStat {
   lastError: string | null;
 }
 
+interface AiStatsSummary {
+  totalCalls: number;
+  failedCalls: number;
+  successRate: number;
+  avgDurationMs: number;
+  periodDays: number;
+}
+
 export default function AdminApiConfigPage() {
   const { success, error: toastError } = useToast();
   const { confirm } = useConfirm();
@@ -42,16 +50,27 @@ export default function AdminApiConfigPage() {
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string; latencyMs?: number; checkedAt: string }>>({});
   const [editing, setEditing] = useState<EditingProvider | null>(null);
   const [taskStats, setTaskStats] = useState<AiTaskStat[]>([]);
+  const [statsSummary, setStatsSummary] = useState<AiStatsSummary | null>(null);
+  const [feedbackStats, setFeedbackStats] = useState<Record<string, number>>({});
+  const [decisionStats, setDecisionStats] = useState<Record<string, number>>({});
 
   const fetchProviders = useCallback(async () => {
     setLoading(true);
     try {
       const [providerData, taskData] = await Promise.all([
         fetchJson<Provider[]>("/api/admin/providers"),
-        fetchJson<{ tasks?: AiTaskStat[] }>("/api/admin/ai-tasks/stats"),
+        fetchJson<{
+          tasks?: AiTaskStat[];
+          summary?: AiStatsSummary;
+          feedback?: Record<string, number>;
+          decisions?: Record<string, number>;
+        }>("/api/admin/ai-tasks/stats"),
       ]);
       setProviders(providerData);
       setTaskStats(taskData.tasks || []);
+      setStatsSummary(taskData.summary || null);
+      setFeedbackStats(taskData.feedback || {});
+      setDecisionStats(taskData.decisions || {});
     } catch (err) {
       console.error(err);
     } finally {
@@ -164,6 +183,33 @@ export default function AdminApiConfigPage() {
           <Activity size={16} className="text-accent" />
           <h3 className="text-sm font-medium text-ink-900">AI 任务面板（近 7 天）</h3>
         </div>
+        {statsSummary && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="bg-white border border-paper-200 rounded-md p-3">
+              <div className="text-lg font-semibold text-ink-900">{statsSummary.totalCalls}</div>
+              <div className="text-xs text-ink-400">总调用</div>
+            </div>
+            <div className="bg-white border border-paper-200 rounded-md p-3">
+              <div className="text-lg font-semibold text-green">{statsSummary.successRate}%</div>
+              <div className="text-xs text-ink-400">成功率</div>
+            </div>
+            <div className="bg-white border border-paper-200 rounded-md p-3">
+              <div className="text-lg font-semibold text-ink-900">{statsSummary.avgDurationMs}ms</div>
+              <div className="text-xs text-ink-400">平均耗时</div>
+            </div>
+            <div className="bg-white border border-paper-200 rounded-md p-3">
+              <div className="text-lg font-semibold text-ink-900">
+                {(feedbackStats.adopt || 0) + (feedbackStats.reject || 0) + (feedbackStats.modify || 0)}
+              </div>
+              <div className="text-xs text-ink-400">人工反馈 · 采纳 {feedbackStats.adopt || 0} / 驳回 {feedbackStats.reject || 0}</div>
+            </div>
+          </div>
+        )}
+        {(Object.keys(decisionStats).length > 0) && (
+          <p className="text-xs text-ink-400 mb-3">
+            流水线决策：可发布 {decisionStats.ready || 0} · 待复核 {decisionStats.review || 0} · 失败 {decisionStats.failed || 0}
+          </p>
+        )}
         {taskStats.length === 0 ? (
           <p className="text-xs text-ink-400">暂无 AI 任务记录。执行一次 AI 生成、校审或配图后会显示统计。</p>
         ) : (

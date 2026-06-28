@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callLlmDetailed } from "@/lib/llm-service";
+import { runAiTextTask } from "@/lib/ai-task";
 import { prisma } from "@/lib/prisma";
 import { logAdminAction } from "@/lib/admin-log";
+
+const XIANYIN_WRITE_PROMPT_VERSION = "xianyin-write-v1";
 
 const WRITE_MODES = [
   { value: "generate", label: "AI 生成", desc: "根据想法自动生成完整诗文" },
@@ -132,18 +134,20 @@ export async function POST(request: NextRequest) {
 
     const userMessage = `体裁：${type}\n\n${input}${styleNote}\n\n请开始创作。`;
 
-    const result = await callLlmDetailed(
+    const result = await runAiTextTask(
+      `xianyin.write.${mode}`,
       [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
       {
+        promptVersion: XIANYIN_WRITE_PROMPT_VERSION,
         temperature: 0.85,
         maxTokens: 4096,
       }
     );
 
-    const output = extractPoemContent(result.content, mode === "continue");
+    const output = extractPoemContent(result.text, mode === "continue");
 
     await logAdminAction({
       action: "xianyin.ai-write",
@@ -154,9 +158,10 @@ export async function POST(request: NextRequest) {
         type,
         inputLength: input.length,
         outputLength: output.length,
-        provider: result.providerLabel,
+        provider: result.providerName,
         model: result.providerModel,
         durationMs: result.durationMs,
+        logId: result.logId,
       },
     });
 
@@ -165,9 +170,10 @@ export async function POST(request: NextRequest) {
       output,
       mode,
       type,
-      provider: result.providerLabel,
+      provider: result.providerName,
       model: result.providerModel,
       durationMs: result.durationMs,
+      logId: result.logId,
     });
 
   } catch (error) {

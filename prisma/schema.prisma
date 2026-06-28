@@ -53,6 +53,10 @@ model Article {
   aiRiskLevel String?
   aiUpdatedAt DateTime?
   likeCount   Int       @default(0)
+  contentFingerprint String?
+  contentEmbedding   String?
+  embeddingModel     String?
+  embeddedAt         DateTime?
 
   // === Indexes ===
   @@index([status, createdAt])
@@ -64,6 +68,7 @@ model Article {
   @@index([source, status, slug])
   @@index([source, aiStatus])
   @@index([aiStatus, aiUpdatedAt])
+  @@index([source, contentFingerprint])
 }
 
 model Tag {
@@ -191,11 +196,14 @@ model AiWorkflowRun {
   updatedAt   DateTime  @updatedAt
   startedAt   DateTime?
   completedAt DateTime?
+  lockedUntil DateTime?
+  workerId    String?
   steps       AiWorkflowStep[]
 
   @@index([status, priority, createdAt])
   @@index([articleId])
   @@index([batchId])
+  @@index([lockedUntil])
 }
 
 model AiWorkflowStep {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createArticleWorkflows, getWorkflowSummary, runWorkflowWorker } from "@/lib/ai-workflow";
+import { createArticleWorkflows, getWorkflowSummary } from "@/lib/ai-workflow";
+import { kickAiWorker } from "@/lib/ai-worker-kick";
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,14 +23,20 @@ export async function POST(request: NextRequest) {
       policy: "batch-unified",
     });
 
+    const queued = results.filter((item) => item.status === "queued").length;
+    if (queued > 0) {
+      kickAiWorker(Math.min(queued, 3));
+    }
+
     return NextResponse.json({
       taskId: batchId,
       batchId,
       total: articleIds.length,
-      queued: results.filter((item) => item.status === "queued").length,
+      queued,
       failed: results.filter((item) => item.status === "failed").length,
-      chunkSize: 1,
-      message: `任务已创建，共 ${articleIds.length} 篇，后台将按持久化流水线执行`,
+      message: queued > 0
+        ? `已加入 ${queued} 篇到 AI 流水线，后台自动处理中`
+        : "未成功加入流水线",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "创建任务失败";
@@ -41,20 +48,15 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const taskId = searchParams.get("taskId");
-    const action = searchParams.get("action");
-
-    if (action === "execute") {
-      await runWorkflowWorker({ maxRuns: 1 });
-    }
 
     const summary = await getWorkflowSummary(taskId);
+    const isDone = summary.total > 0
+      && (summary.counts.queued || 0) === 0
+      && (summary.counts.running || 0) === 0;
+
     return NextResponse.json({
       taskId,
-      status: summary.counts.failed > 0 && summary.counts.completed + summary.counts.failed === summary.total
-        ? "completed"
-        : summary.counts.queued || summary.counts.running
-          ? "running"
-          : "completed",
+      status: isDone ? "completed" : "running",
       progress: {
         current: summary.runs.filter((run) => run.status === "completed" || run.status === "failed").length,
         total: summary.total,
@@ -62,13 +64,9 @@ export async function GET(request: NextRequest) {
         success: summary.counts.completed || 0,
         failed: summary.counts.failed || 0,
         skipped: summary.counts.skipped || 0,
-        pinyinCorrections: 0,
-        pinyinUncertain: 0,
       },
       startedAt: summary.runs.at(-1)?.startedAt,
-      completedAt: summary.runs.every((run) => run.status === "completed" || run.status === "failed")
-        ? new Date().toISOString()
-        : null,
+      completedAt: isDone ? new Date().toISOString() : null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "获取任务状态失败";

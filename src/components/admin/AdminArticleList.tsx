@@ -30,6 +30,7 @@ import { TableSkeleton } from "@/components/admin/Skeleton"
 import { EmptyState } from "@/components/admin/EmptyState"
 import { AiStatsPanel } from "@/components/admin/AiStatsPanel"
 import { AiWorkflowTrace } from "@/components/admin/AiWorkflowTrace"
+import { useAiWorkflow } from "@/hooks/useAiWorkflow"
 
 interface DuplicatePair {
   id1: string
@@ -97,10 +98,12 @@ export function AdminArticleList({
   const [batchPinyinLoading, setBatchPinyinLoading] = useState(false)
   const [batchClearAiLoading, setBatchClearAiLoading] = useState(false)
   const [batchUnifiedLoading, setBatchUnifiedLoading] = useState(false)
+  const [workflowPolicy, setWorkflowPolicy] = useState<"standard" | "parallel" | "full">("standard")
   const [batchClearPaintingLoading, setBatchClearPaintingLoading] = useState(false)
   const [traceRunId, setTraceRunId] = useState<string | null>(null)
   const { success, error: toastError } = useToast()
   const { confirm } = useConfirm()
+  const { enqueueArticles, findLatestRun, retryRun } = useAiWorkflow({ autoKick: false })
 
   const filteredArticles = articles;
 
@@ -353,115 +356,31 @@ export function AdminArticleList({
     if (selected.size === 0) return
 
     confirm({
-      title: `确认对选中的 ${selected.size} 篇文章进行一键AI辅助+拼音校准？`,
-      description: "每批处理 3 篇，自动逐批执行。完成后将显示总耗时和拼音修正统计。",
+      title: `确认对选中的 ${selected.size} 篇文章启动 AI 流水线？`,
+      description: workflowPolicy === "full"
+        ? "含配图推荐步骤，后台自动完成注释、拼音、校审与配图候选。"
+        : workflowPolicy === "parallel"
+          ? "并行 Expert 模式，文学辅助与拼音校准同时执行。"
+          : "文章将加入后台持久化流水线，自动完成注释、拼音、校审等步骤，无需等待页面。",
       async onConfirm() {
         setBatchUnifiedLoading(true)
-        const startMs = Date.now()
         try {
-          // 1. 创建任务
-          const createRes = await fetch("/api/admin/articles/batch-unified", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              articleIds: Array.from(selected),
-              concurrency: 1,
-              chunkSize: 3,
-            }),
-          })
-          const { taskId, total } = await createRes.json()
-
-          if (!taskId) {
-            toastError("创建任务失败")
-            setBatchUnifiedLoading(false)
+          const result = await enqueueArticles(Array.from(selected), source, workflowPolicy)
+          if (!result.ok) {
+            toastError(result.error || "加入 AI 流水线失败")
             return
           }
-
-          // 2. 逐片执行 + 轮询进度
-          let currentPercent = 0
-          const pollIntervalMs = 2000
-
-          while (true) {
-            // 触发下一片执行
-            const execRes = await fetch(
-              `/api/admin/articles/batch-unified?taskId=${taskId}&action=execute`
-            )
-            const progress = await execRes.json()
-
-            if (progress.status === "completed") {
-              const durSec = ((Date.now() - startMs) / 1000).toFixed(1)
-              const pinyinInfo = progress.progress.pinyinCorrections > 0
-                ? `，拼音修正 ${progress.progress.pinyinCorrections} 项${progress.progress.pinyinUncertain > 0 ? `（待复核 ${progress.progress.pinyinUncertain}）` : ""}`
-                : ""
-              success(
-                `一键完成：${progress.progress.success}/${progress.progress.total} 篇，耗时 ${durSec}s${pinyinInfo}`
-              )
-              if (progress.progress.failed > 0) {
-                toastError(`失败 ${progress.progress.failed} 篇`)
-              }
-              break
-            }
-
-            // 更新进度（用 success toast 做进度提示）
-            currentPercent = progress.progress.percent
-            // 短暂等待后继续下一片
-            await new Promise((r) => setTimeout(r, pollIntervalMs))
+          if (result.queued > 0) {
+            success(result.message || `已加入 ${result.queued} 篇，后台自动处理中`)
           }
-
-          fetchArticles()
-        } catch {
-          toastError("一键AI辅助失败")
-        } finally {
-          setBatchUnifiedLoading(false)
-        }
-      },
-    })
-  }
-
-  async function handleRunAiWorker() {
-    setBatchUnifiedLoading(true)
-    try {
-      const res = await fetch("/api/admin/ai-workflows/worker", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxRuns: 1 }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toastError(data.error || "AI 任务推进失败")
-        return
-      }
-      success(data.claimed > 0 ? `已推进 ${data.claimed} 个 AI 任务` : "暂无待执行 AI 任务")
-      fetchArticles()
-    } catch {
-      toastError("AI 任务推进失败")
-    } finally {
-      setBatchUnifiedLoading(false)
-    }
-  }
-
-  async function handleAddToPipeline() {
-    if (selected.size === 0) return
-    confirm({
-      title: `确认将选中的 ${selected.size} 篇文章加入 AI 流水线？`,
-      description: "文章将自动进入后台 AI 处理队列，无需等待页面打开。",
-      async onConfirm() {
-        try {
-          const res = await fetch("/api/admin/ai-workflows", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ articleIds: Array.from(selected), source }),
-          })
-          const data = await res.json()
-          if (data.queued > 0) {
-            success(`已加入 ${data.queued} 篇文章到 AI 流水线`)
-          }
-          if (data.failed > 0) {
-            toastError(`${data.failed} 篇加入失败`)
+          if (result.failed > 0) {
+            toastError(`${result.failed} 篇加入失败`)
           }
           fetchArticles()
         } catch {
           toastError("加入 AI 流水线失败")
+        } finally {
+          setBatchUnifiedLoading(false)
         }
       },
     })
@@ -483,14 +402,10 @@ export function AdminArticleList({
         try {
           let retried = 0
           for (const id of failedIds) {
-            const run = await fetch(`/api/admin/ai-workflows?batchId=`, {
-              headers: { "Content-Type": "application/json" },
-            }).then((r) => r.json())
-            // Find the latest run for this article
-            const articleRun = run.runs?.find((r: { articleId: string }) => r.articleId === id)
-            if (articleRun) {
-              await fetch(`/api/admin/ai-workflows/${articleRun.id}/retry`, { method: "POST" })
-              retried++
+            const run = await findLatestRun(id)
+            if (run?.id) {
+              const ok = await retryRun(run.id)
+              if (ok) retried++
             }
           }
           success(`已重试 ${retried} 篇文章`)
@@ -509,10 +424,8 @@ export function AdminArticleList({
 
   async function openWorkflowTrace(articleId: string) {
     try {
-      const res = await fetch(`/api/admin/ai-workflows?batchId=`)
-      const data = await res.json()
-      const run = data.runs?.find((r: { articleId: string }) => r.articleId === articleId)
-      if (run) {
+      const run = await findLatestRun(articleId)
+      if (run?.id) {
         setTraceRunId(run.id)
       } else {
         toastError("未找到该文章的 AI 任务记录")
@@ -770,7 +683,13 @@ export function AdminArticleList({
         </div>
       </div>
 
-      <AiStatsPanel />
+      <AiStatsPanel
+        activeFilter={aiStatusFilter}
+        onFilterChange={(filter) => {
+          setAiStatusFilter(filter)
+          setPage(1)
+        }}
+      />
 
       {loading ? (
         <TableSkeleton rows={5} />
@@ -863,14 +782,6 @@ export function AdminArticleList({
               <option value={100}>100 篇</option>
               <option value={200}>200 篇</option>
             </select>
-            <button
-              onClick={handleRunAiWorker}
-              disabled={batchUnifiedLoading}
-              className="h-8 px-3 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <Zap size={14} className={batchUnifiedLoading ? "animate-spin" : ""} />
-              推进AI任务
-            </button>
           </div>
           {/* Toolbar */}
           {filteredArticles.length > 0 && (
@@ -911,13 +822,23 @@ export function AdminArticleList({
                     >
                       批量删除
                     </button>
+                    <select
+                      value={workflowPolicy}
+                      onChange={(e) => setWorkflowPolicy(e.target.value as "standard" | "parallel" | "full")}
+                      className="px-2 py-1 text-xs border border-border rounded-full bg-background"
+                      title="流水线策略"
+                    >
+                      <option value="standard">标准</option>
+                      <option value="parallel">并行 Expert</option>
+                      <option value="full">含配图</option>
+                    </select>
                     <button
                       onClick={handleBatchUnified}
                       disabled={batchUnifiedLoading}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full transition-colors disabled:opacity-50 font-medium"
                     >
                       <Zap size={14} className={batchUnifiedLoading ? "animate-spin" : ""} />
-                      {batchUnifiedLoading ? "处理中..." : "⚡一键AI"}
+                      {batchUnifiedLoading ? "加入中..." : "AI 流水线"}
                     </button>
                     <button
                       onClick={handleBatchAiAssist}
@@ -950,13 +871,6 @@ export function AdminArticleList({
                     >
                       <Loader2 size={14} className={batchClearPaintingLoading ? "animate-spin" : ""} />
                       {batchClearPaintingLoading ? "清除中..." : "清除配图"}
-                    </button>
-                    <button
-                      onClick={handleAddToPipeline}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-full transition-colors font-medium"
-                    >
-                      <Zap size={14} />
-                      加入AI流水线
                     </button>
                     <button
                       onClick={handleRetryFailed}

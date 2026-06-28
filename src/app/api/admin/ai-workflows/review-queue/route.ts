@@ -12,6 +12,7 @@ export async function GET() {
         title: true,
         author: true,
         type: true,
+        source: true,
         aiStatus: true,
         aiConfidence: true,
         aiRiskLevel: true,

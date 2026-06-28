@@ -3,23 +3,21 @@ import { runUnifiedCalibration } from "@/lib/unified-calibration";
 import { getOrCreateFormatAnalysis } from "@/lib/format-analysis";
 import { runAiTask } from "@/lib/ai-task";
 import { articleReviewSchema } from "@/lib/ai-schemas";
-import { ARTICLE_REVIEW_PROMPT_VERSION } from "@/lib/prompts";
 import {
   saveArtifact,
   saveDecision,
   type ArtifactType,
 } from "@/lib/ai-artifact";
+import { planArticlePipeline } from "@/lib/ai-planner";
+import { computeArticleContentHash } from "@/lib/ai-content-hash";
+import { checkArticleDuplicate, persistArticleFingerprint } from "@/lib/article-dedup";
+import { runParallelExperts } from "@/lib/parallel-experts";
+import { recommendPaintingsForPoem } from "@/lib/painting-match";
+import { persistArticleEmbedding } from "@/lib/ai-embedding";
+import { resolvePromptVersion, getPromptRuntimeOptions } from "@/lib/prompt-experiments";
+import { WORKFLOW_STEPS, type AiWorkflowStepName } from "@/lib/ai-workflow-types";
 
-export const WORKFLOW_STEPS = [
-  "parse.normalize",
-  "dedupe.check",
-  "article.unified-calibration",
-  "format.analyze",
-  "article.review",
-  "decision.route",
-] as const;
-
-export type AiWorkflowStepName = typeof WORKFLOW_STEPS[number];
+export { WORKFLOW_STEPS, type AiWorkflowStepName } from "@/lib/ai-workflow-types";
 
 interface CreateWorkflowInput {
   articleId: string;
@@ -31,6 +29,7 @@ interface CreateWorkflowInput {
 
 interface WorkerOptions {
   maxRuns?: number;
+  workerId?: string;
 }
 
 interface ReviewIssue {
@@ -63,6 +62,11 @@ const ZOMBIE_STEP_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 const ZOMBIE_RUN_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
 const MAX_INPUT_LENGTH = 50000; // safety limit for AI inputs
 const MAX_RUNS_PER_WORKER = 5;
+const WORKER_LEASE_MS = 5 * 60 * 1000;
+
+function createWorkerId() {
+  return `w_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 // ============================================================================
 // 1. Workflow Creation & Queueing
@@ -148,35 +152,55 @@ export async function runWorkflowWorker(options: WorkerOptions = {}) {
   await recoverZombieSteps();
   await recoverZombieRuns();
 
+  const workerId = options.workerId || createWorkerId();
   const maxRuns = Math.max(1, Math.min(options.maxRuns || 1, MAX_RUNS_PER_WORKER));
   const claimed = [];
 
   for (let i = 0; i < maxRuns; i++) {
-    const run = await claimNextRun();
+    const run = await claimNextRun(workerId);
     if (!run) break;
     claimed.push(run);
   }
 
-  const results = await Promise.all(claimed.map((run) => executeRun(run.id)));
+  const results = await Promise.all(claimed.map((run) => executeRun(run.id, workerId)));
   return {
+    workerId,
     claimed: claimed.length,
     results,
   };
 }
 
-async function claimNextRun() {
+async function claimNextRun(workerId: string) {
+  const now = new Date();
+  const leaseUntil = new Date(now.getTime() + WORKER_LEASE_MS);
+
   const run = await prisma.aiWorkflowRun.findFirst({
-    where: { status: "queued" },
+    where: {
+      status: "queued",
+      OR: [
+        { lockedUntil: null },
+        { lockedUntil: { lt: now } },
+      ],
+    },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
   });
   if (!run) return null;
 
   const updated = await prisma.aiWorkflowRun.updateMany({
-    where: { id: run.id, status: "queued" },
+    where: {
+      id: run.id,
+      status: "queued",
+      OR: [
+        { lockedUntil: null },
+        { lockedUntil: { lt: now } },
+      ],
+    },
     data: {
       status: "running",
-      startedAt: run.startedAt || new Date(),
+      startedAt: run.startedAt || now,
       error: null,
+      workerId,
+      lockedUntil: leaseUntil,
     },
   });
   if (updated.count === 0) return null;
@@ -191,7 +215,7 @@ async function claimNextRun() {
   return run;
 }
 
-async function executeRun(runId: string) {
+async function executeRun(runId: string, workerId?: string) {
   const run = await prisma.aiWorkflowRun.findUnique({
     where: { id: runId },
     include: { steps: { orderBy: { order: "asc" } } },
@@ -200,19 +224,50 @@ async function executeRun(runId: string) {
     return { runId, status: "failed", error: "任务不存在或缺少文章" };
   }
 
+  if (workerId && run.workerId && run.workerId !== workerId) {
+    return { runId, status: "skipped", error: "任务已被其他 worker 领取" };
+  }
+
   let dedupBlocked = false;
 
   try {
+    const plan = await planArticlePipeline(run.articleId, run.policy);
+
+    await saveStepDecision(
+      run.id,
+      run.articleId,
+      "planner.route",
+      plan.skipSteps.length > 0 ? "skipped" : "ready",
+      undefined,
+      [
+        `tier:${plan.tier}`,
+        `contentHash:${plan.contentHash}`,
+        ...Object.entries(plan.skipReasons).map(([step, reason]) => `${step}: ${reason}`),
+      ]
+    );
+
     for (const step of run.steps) {
       if (step.status === "completed" || step.status === "skipped") continue;
 
       // If dedup already blocked, skip remaining steps
       if (dedupBlocked) {
-        await skipStep(step.id);
+        await skipStep(step.id, "去重阻断");
         continue;
       }
 
-      const output = await executeStep(run.id, run.articleId, step.name as AiWorkflowStepName, step.id);
+      // Planner: skip steps that don't need re-processing
+      if (plan.skipSteps.includes(step.name as AiWorkflowStepName)) {
+        await skipStep(step.id, plan.skipReasons[step.name as AiWorkflowStepName] || "Planner 跳过");
+        continue;
+      }
+
+      const output = await executeStep(
+        run.id,
+        run.articleId,
+        step.name as AiWorkflowStepName,
+        step.id,
+        plan.contentHash
+      );
 
       // Check if dedup blocked the pipeline
       if (output && typeof output === "object" && "duplicate" in output && output.duplicate === true) {
@@ -245,6 +300,8 @@ async function executeRun(runId: string) {
         progress: 100,
         completedAt: new Date(),
         error: dedupBlocked ? "去重阻断：检测到重复内容" : null,
+        lockedUntil: null,
+        workerId: null,
       },
     });
 
@@ -257,6 +314,8 @@ async function executeRun(runId: string) {
         status: "failed",
         error: message,
         completedAt: new Date(),
+        lockedUntil: null,
+        workerId: null,
       },
     });
     await prisma.article.update({
@@ -271,7 +330,13 @@ async function executeRun(runId: string) {
   }
 }
 
-async function executeStep(runId: string, articleId: string, stepName: AiWorkflowStepName, stepId?: string) {
+async function executeStep(
+  runId: string,
+  articleId: string,
+  stepName: AiWorkflowStepName,
+  stepId?: string,
+  contentHash?: string
+) {
   const step = await prisma.aiWorkflowStep.findFirst({
     where: { runId, name: stepName },
   });
@@ -299,12 +364,13 @@ async function executeStep(runId: string, articleId: string, stepName: AiWorkflo
 
   const startedAt = Date.now();
   try {
-    const output = await runStepLogic(stepName, articleId);
+    const output = await runStepLogic(stepName, articleId, runId);
+    const enriched = enrichStepOutput(output, contentHash);
     await prisma.aiWorkflowStep.update({
       where: { id: step.id },
       data: {
-        status: isSkippedOutput(output) ? "skipped" : "completed",
-        output: JSON.stringify(output || {}),
+        status: isSkippedOutput(enriched) ? "skipped" : "completed",
+        output: JSON.stringify(enriched || {}),
         durationMs: Date.now() - startedAt,
         error: null,
       },
@@ -312,11 +378,11 @@ async function executeStep(runId: string, articleId: string, stepName: AiWorkflo
     await updateRunProgress(runId);
 
     // Save artifacts for versioned AI outputs
-    if (stepId && output) {
-      await saveStepArtifacts(runId, stepId, articleId, stepName, output);
+    if (stepId && enriched) {
+      await saveStepArtifacts(runId, stepId, articleId, stepName, enriched);
     }
 
-    return output;
+    return enriched;
   } catch (error) {
     const message = error instanceof Error ? error.message : "步骤执行失败";
     const nextStatus = step.attempt + 1 >= step.maxAttempts ? "failed" : "queued";
@@ -411,6 +477,17 @@ async function saveStepArtifacts(
         });
         break;
       }
+
+      case "painting.recommend": {
+        const result = output as { candidates?: unknown[]; analysis?: unknown };
+        if (result.candidates) {
+          await saveArtifact({
+            runId, stepId, articleId, type: "painting",
+            content: result,
+          });
+        }
+        break;
+      }
     }
   } catch (err) {
     console.warn(`[artifact] Failed to save artifact for step ${stepName}:`, err);
@@ -432,31 +509,46 @@ async function saveStepDecision(
   }
 }
 
-async function skipStep(stepId: string) {
+async function skipStep(stepId: string, reason = "去重阻断") {
   await prisma.aiWorkflowStep.update({
     where: { id: stepId },
     data: {
       status: "skipped",
-      output: JSON.stringify({ skipped: true, reason: "去重阻断" }),
+      output: JSON.stringify({ skipped: true, reason }),
     },
   });
 }
 
-async function runStepLogic(stepName: AiWorkflowStepName, articleId: string) {
+async function runStepLogic(stepName: AiWorkflowStepName, articleId: string, runId?: string) {
   switch (stepName) {
     case "parse.normalize":
       return normalizeArticle(articleId);
     case "dedupe.check":
       return checkDuplicate(articleId);
     case "article.unified-calibration":
-      return runUnifiedCalibration(articleId);
+      return runCalibrationStep(runId || "", articleId);
     case "format.analyze":
       return getOrCreateFormatAnalysis(articleId);
     case "article.review":
       return generateReviewReport(articleId);
+    case "painting.recommend":
+      return runPaintingRecommend(articleId);
     case "decision.route":
       return routeArticleDecision(articleId);
   }
+}
+
+async function runCalibrationStep(runId: string, articleId: string) {
+  if (runId) {
+    const run = await prisma.aiWorkflowRun.findUnique({
+      where: { id: runId },
+      select: { policy: true },
+    });
+    if (run?.policy === "parallel") {
+      return runParallelExperts(articleId);
+    }
+  }
+  return runUnifiedCalibration(articleId);
 }
 
 // ============================================================================
@@ -516,6 +608,8 @@ async function recoverZombieRuns() {
       data: {
         status: newStatus,
         error: newStatus === "failed" ? "任务因超时未完成，已自动标记为失败" : null,
+        lockedUntil: null,
+        workerId: null,
       },
     });
 
@@ -564,55 +658,63 @@ async function normalizeArticle(articleId: string) {
     });
   }
 
-  return { changed, title, type: article.type };
+  const fingerprint = await persistArticleFingerprint(articleId);
+  void persistArticleEmbedding(articleId).catch(() => {});
+
+  return { changed, title, type: article.type, contentFingerprint: fingerprint };
+}
+
+async function runPaintingRecommend(articleId: string) {
+  const article = await prisma.article.findUnique({
+    where: { id: articleId },
+    select: { id: true, title: true, body: true, tagList: true, paintingId: true },
+  });
+  if (!article) throw new Error("文章不存在");
+  if (article.paintingId) {
+    return { skipped: true, reason: "已绑定配图" };
+  }
+
+  let tags: string[] = [];
+  try {
+    tags = JSON.parse(article.tagList || "[]");
+  } catch {
+    tags = [];
+  }
+
+  const result = await recommendPaintingsForPoem({
+    title: article.title,
+    body: article.body,
+    tags,
+    count: 4,
+  });
+
+  return {
+    candidates: result.matches,
+    analysis: result.analysis,
+    mode: result.mode,
+    total: result.total,
+  };
 }
 
 async function checkDuplicate(articleId: string) {
-  const article = await prisma.article.findUnique({
-    where: { id: articleId },
-    select: { id: true, title: true, source: true, body: true, preface: true, postscript: true },
-  });
-  if (!article) throw new Error("文章不存在");
+  const result = await checkArticleDuplicate(articleId);
 
-  const candidates = await prisma.article.findMany({
-    where: {
-      id: { not: article.id },
-      source: article.source,
-      OR: [
-        { title: article.title },
-        { body: { contains: article.body.slice(0, 24) } },
-      ],
-    },
-    select: { id: true, title: true, body: true, preface: true, postscript: true },
-    take: 50,
-  });
-
-  const currentText = comparableText(article);
-  let best: { id: string; title: string; similarity: number; type: "exact" | "similar" } | null = null;
-
-  for (const candidate of candidates) {
-    const similarity = calculateSimilarity(currentText, comparableText(candidate));
-    if (!best || similarity > best.similarity) {
-      best = {
-        id: candidate.id,
-        title: candidate.title,
-        similarity,
-        type: similarity >= 0.98 ? "exact" : "similar",
-      };
-    }
-  }
-
-  if (best && best.similarity >= 0.85) {
-    // Mark article for review immediately
+  if (result.duplicate && result.id && result.similarity != null && result.type) {
     await prisma.article.update({
-      where: { id: article.id },
+      where: { id: articleId },
       data: {
         aiStatus: "review",
-        aiRiskLevel: best.type === "exact" ? "high" : "medium",
+        aiRiskLevel: result.type === "exact" ? "high" : "medium",
         aiUpdatedAt: new Date(),
       },
     });
-    return { duplicate: true, ...best };
+    return {
+      duplicate: true,
+      id: result.id,
+      title: result.title,
+      similarity: result.similarity,
+      type: result.type,
+    };
   }
 
   return { duplicate: false };
@@ -648,6 +750,9 @@ async function generateReviewReport(articleId: string) {
       .replace(/\s*on\w+\s*=\s*"[^"]*"/gi, "");
   };
 
+  const promptVersion = resolvePromptVersion("article.review", articleId);
+  const runtimeOptions = getPromptRuntimeOptions(promptVersion);
+
   const aiResult = await runAiTask(
     "article.review",
     [
@@ -662,9 +767,9 @@ async function generateReviewReport(articleId: string) {
     ],
     articleReviewSchema,
     {
-      promptVersion: ARTICLE_REVIEW_PROMPT_VERSION,
-      temperature: 0.2,
-      maxTokens: 2200,
+      promptVersion,
+      temperature: runtimeOptions.temperature ?? 0.2,
+      maxTokens: runtimeOptions.maxTokens ?? 2200,
     }
   );
 
@@ -673,7 +778,7 @@ async function generateReviewReport(articleId: string) {
     generatedAt: new Date().toISOString(),
     source: {
       provider: "configured-llm",
-      promptVersion: ARTICLE_REVIEW_PROMPT_VERSION,
+      promptVersion,
     },
   };
 
@@ -686,7 +791,8 @@ async function generateReviewReport(articleId: string) {
     },
   });
 
-  return report;
+  const contentHash = computeArticleContentHash(article);
+  return { ...report, contentHash };
 }
 
 async function routeArticleDecision(articleId: string) {
@@ -863,41 +969,6 @@ function aggregateProgress(runs: Array<{ progress: number }>) {
 // 6. Utilities
 // ============================================================================
 
-function comparableText(article: { title: string; body: string; preface?: string | null; postscript?: string | null }) {
-  return `${article.title}${article.preface || ""}${article.body}${article.postscript || ""}`
-    .replace(/\s+/g, "")
-    .replace(/[，。！？、；：,.!?;:]/g, "");
-}
-
-function calculateSimilarity(left: string, right: string) {
-  const longer = Math.max(left.length, right.length);
-  if (longer === 0) return 1;
-  if (left === right) return 1;
-  const distance = levenshteinDistance(left.slice(0, 1000), right.slice(0, 1000));
-  return (Math.min(longer, 1000) - distance) / Math.min(longer, 1000);
-}
-
-function levenshteinDistance(left: string, right: string) {
-  const costs: number[] = [];
-  for (let i = 0; i <= left.length; i++) {
-    let lastValue = i;
-    for (let j = 0; j <= right.length; j++) {
-      if (i === 0) {
-        costs[j] = j;
-      } else if (j > 0) {
-        let newValue = costs[j - 1];
-        if (left.charAt(i - 1) !== right.charAt(j - 1)) {
-          newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
-        }
-        costs[j - 1] = lastValue;
-        lastValue = newValue;
-      }
-    }
-    if (i > 0) costs[right.length] = lastValue;
-  }
-  return costs[right.length] || 0;
-}
-
 function buildReviewPrompt(article: {
   title: string;
   author: string;
@@ -1027,6 +1098,11 @@ function parseJson(raw: string | null) {
   } catch {
     return null;
   }
+}
+
+function enrichStepOutput(output: unknown, contentHash?: string) {
+  if (!contentHash || !output || typeof output !== "object") return output;
+  return { ...(output as Record<string, unknown>), contentHash };
 }
 
 function isSkippedOutput(output: unknown): output is { skipped: true } {

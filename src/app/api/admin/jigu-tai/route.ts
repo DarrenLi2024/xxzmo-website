@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateUniqueSlug } from "@/lib/article-slug";
 import { createArticleWithTags } from "@/lib/tag-service";
 import { logAdminAction } from "@/lib/admin-log";
-import { callLlmDetailed } from "@/lib/llm-service";
+import { runAiTask } from "@/lib/ai-task";
+import { jiguSourceExtractSchema } from "@/lib/ai-schemas";
 import { JIGU_IMPORT_PROMPT_VERSION } from "@/lib/prompts";
 
 interface SourceCandidate {
@@ -117,26 +118,45 @@ function cleanWiki(b: string) {
   return c.replace(/^==\s*(竖排|横排)\s*==\s*$/gm, "").replace(/\n{3,}/g, "\n\n").replace(/^\s*本作品.*$/gm, "").trim();
 }
 
-// ---- LLM 提取 ----
-function llmExtract(title: string): Promise<SourceCandidate[]> {
-  return callLlmDetailed(
-    [
-      { role: "system", content: "你是古典文献专家，请凭训练数据知识返回经典篇目的完整原文。" },
-      { role: "user", content: `篇目：${title}\n\n返回JSON：{"title":"","author":"","body":"完整原文"}` },
-    ],
-    { temperature: 0.3, maxTokens: 8192, timeoutMs: 90000 }
-  ).then(result => {
-    const m = result.content.match(/\{[\s\S]*\}/);
-    if (!m) return [];
-    const d = JSON.parse(m[0]);
-    if (!d.body || d.body.length < 20) return [];
+// ---- LLM 提取（经 runAiTask 统一观测与校验）----
+async function llmExtract(title: string): Promise<SourceCandidate[]> {
+  try {
+    const aiResult = await runAiTask(
+      "jigu.source.extract",
+      [
+        {
+          role: "system",
+          content: "你是古典文献专家。请凭训练数据知识返回经典篇目的完整原文。只输出严格 JSON，不输出 Markdown。",
+        },
+        {
+          role: "user",
+          content: `篇目：${title}\n\n返回 JSON：{"title":"","author":"","body":"完整原文"}`,
+        },
+      ],
+      jiguSourceExtractSchema,
+      {
+        promptVersion: JIGU_IMPORT_PROMPT_VERSION,
+        temperature: 0.3,
+        maxTokens: 8192,
+        timeoutMs: 90000,
+      }
+    );
+
+    const d = aiResult.data;
     return [{
-      id: "llm", title: d.title || title, url: "",
-      source: "guoxue" as const, label: "AI 知识库",
-      excerpt: d.body.slice(0, 240), body: d.body,
-      confidence: 0.7, script: "zh-Hans" as const,
+      id: "llm",
+      title: d.title || title,
+      url: "",
+      source: "guoxue" as const,
+      label: "AI 知识库",
+      excerpt: d.body.slice(0, 240),
+      body: d.body,
+      confidence: 0.7,
+      script: "zh-Hans" as const,
     }];
-  }).catch(() => []);
+  } catch {
+    return [];
+  }
 }
 
 // ---- 辅助 ----

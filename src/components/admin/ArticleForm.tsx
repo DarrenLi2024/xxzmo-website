@@ -170,6 +170,7 @@ export function ArticleForm(props: Props) {
   const [jiguStructuredAnnotations, setJiguStructuredAnnotations] = useState<AiAnnotation[] | null>(null)
   const [aiAssisting, setAiAssisting] = useState(false)
   const [aiReviewing, setAiReviewing] = useState(false)
+  const [aiFeedbackSubmitting, setAiFeedbackSubmitting] = useState(false)
   const [chuliAiFields, setChuliAiFields] = useState({
     annotations: "",
     translation: "",
@@ -625,6 +626,31 @@ export function ArticleForm(props: Props) {
       toastError(msg)
     } finally {
       setAiReviewing(false)
+    }
+  }
+
+  async function handleReviewFeedback(action: "adopt" | "reject") {
+    if (!articleId) return
+    setAiFeedbackSubmitting(true)
+    try {
+      const res = await fetch(`/api/admin/articles/${articleId}/ai-feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          reason: action === "adopt" ? "校审报告确认通过" : "校审报告需人工继续复核",
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        toastSuccess(action === "adopt" ? "已确认通过，文章标记为可发布" : "已驳回复核，文章保留在复核队列")
+      } else {
+        toastError(data.error || "反馈提交失败")
+      }
+    } catch {
+      toastError("网络错误，请重试")
+    } finally {
+      setAiFeedbackSubmitting(false)
     }
   }
 
@@ -1507,6 +1533,25 @@ export function ArticleForm(props: Props) {
               <div className="flex items-start gap-2 rounded-md border border-amber/20 bg-amber/5 p-3 text-sm text-amber-900">
                 <AlertCircle size={14} className="mt-0.5 shrink-0" />
                 <span>{aiReviewReport.publishAdvice}</span>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleReviewFeedback("adopt")}
+                  disabled={aiFeedbackSubmitting}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-green/30 text-green-700 rounded-md hover:bg-green/5 transition-colors disabled:opacity-50"
+                >
+                  <Check size={12} /> 确认校审通过
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleReviewFeedback("reject")}
+                  disabled={aiFeedbackSubmitting}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-rose/30 text-rose-700 rounded-md hover:bg-rose/5 transition-colors disabled:opacity-50"
+                >
+                  <X size={12} /> 驳回复核
+                </button>
               </div>
             </div>
           ) : (

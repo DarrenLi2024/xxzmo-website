@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { runAiTask } from "@/lib/ai-task";
 import { unifiedAssistSchema, UNIFIED_ASSIST_PROMPT_VERSION } from "@/lib/ai-schemas";
 import { buildUnifiedAssistMessages } from "@/lib/prompts";
+import { resolvePromptVersion, getPromptRuntimeOptions } from "@/lib/prompt-experiments";
 import {
   applyContextPinyinCorrections,
   buildArticlePinyinData,
@@ -96,7 +97,10 @@ export async function runUnifiedCalibration(
   await ensurePinyinDict();
   const baseline = buildArticlePinyinData(article);
 
-  // 2. 一次 LLM 调用完成两部分任务
+  // 2. 一次 LLM 调用完成两部分任务（Prompt A/B 分桶）
+  const promptVersion = resolvePromptVersion("article.unified-calibration", articleId);
+  const runtimeOptions = getPromptRuntimeOptions(promptVersion);
+
   const aiResult = await runAiTask(
     "article.unified-calibration",
     buildUnifiedAssistMessages({
@@ -112,9 +116,9 @@ export async function runUnifiedCalibration(
     }),
     unifiedAssistSchema,
     {
-      promptVersion: UNIFIED_ASSIST_PROMPT_VERSION,
-      temperature: 0.25,
-      maxTokens: 16384,
+      promptVersion,
+      temperature: runtimeOptions.temperature ?? 0.25,
+      maxTokens: runtimeOptions.maxTokens ?? 16384,
       timeoutMs: 120000,
     }
   );
@@ -126,7 +130,7 @@ export async function runUnifiedCalibration(
   const pinyinData: ArticlePinyinData = {
     ...merged.data,
     calibration: {
-      promptVersion: UNIFIED_ASSIST_PROMPT_VERSION,
+      promptVersion,
       reviewedAt: new Date().toISOString(),
       logId: aiResult.logId,
       providerModel: aiResult.providerModel,
@@ -214,7 +218,7 @@ export async function runUnifiedCalibration(
     },
     aiMeta: {
       taskName: "article.unified-calibration",
-      promptVersion: UNIFIED_ASSIST_PROMPT_VERSION,
+      promptVersion,
       logId: aiResult.logId,
       providerName: aiResult.providerName,
       providerModel: aiResult.providerModel,

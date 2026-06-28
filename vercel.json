@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/admin/ai-workflows/worker",
-      "schedule": "0 2 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

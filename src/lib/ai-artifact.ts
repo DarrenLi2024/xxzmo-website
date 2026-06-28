@@ -10,7 +10,8 @@ export type ArtifactType =
   | "appreciation"
   | "pinyin"
   | "review"
-  | "format";
+  | "format"
+  | "painting";
 
 interface SaveArtifactInput {
   runId: string;

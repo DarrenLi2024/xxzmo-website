@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { callLlmDetailed } from "@/lib/llm-service";
+import { resolveLlmOptionsForTask } from "@/lib/ai-provider-policy";
 
 interface AiMessage {
   role: "system" | "user" | "assistant";
@@ -25,6 +26,15 @@ export interface AiTaskResult<T> {
   durationMs: number;
 }
 
+export interface AiTextTaskResult {
+  text: string;
+  rawOutput: string;
+  logId: string | null;
+  providerName: string;
+  providerModel: string;
+  durationMs: number;
+}
+
 export async function runAiTask<T>(
   taskName: string,
   messages: AiMessage[],
@@ -37,13 +47,13 @@ export async function runAiTask<T>(
   let rawOutput = "";
 
   try {
-    const llmResult = await callLlmDetailed(messages, {
+    const llmResult = await callLlmDetailed(messages, resolveLlmOptionsForTask(taskName, {
       temperature: options.temperature,
       maxTokens: options.maxTokens,
       timeoutMs: options.timeoutMs,
       maxRetries: options.maxRetries,
       maxProviders: options.maxProviders,
-    });
+    }));
     rawOutput = llmResult.content;
     providerName = llmResult.providerName;
     providerModel = llmResult.providerModel;
@@ -64,6 +74,67 @@ export async function runAiTask<T>(
 
     return {
       data,
+      rawOutput,
+      logId,
+      providerName,
+      providerModel,
+      durationMs: llmResult.durationMs,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await writeAiTaskLog({
+      taskName,
+      promptVersion: options.promptVersion,
+      providerName,
+      providerModel,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+      durationMs: Date.now() - startedAt,
+      success: false,
+      error: message,
+      rawOutputPreview: rawOutput ? preview(rawOutput) : undefined,
+    });
+    throw error;
+  }
+}
+
+/** 非结构化文本任务（创作、润色等），仍写入 AiTaskLog 便于观测 */
+export async function runAiTextTask(
+  taskName: string,
+  messages: AiMessage[],
+  options: AiTaskOptions
+): Promise<AiTextTaskResult> {
+  const startedAt = Date.now();
+  let providerName: string | undefined;
+  let providerModel: string | undefined;
+  let rawOutput = "";
+
+  try {
+    const llmResult = await callLlmDetailed(messages, resolveLlmOptionsForTask(taskName, {
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+      timeoutMs: options.timeoutMs,
+      maxRetries: options.maxRetries,
+      maxProviders: options.maxProviders,
+    }));
+    rawOutput = llmResult.content;
+    providerName = llmResult.providerName;
+    providerModel = llmResult.providerModel;
+
+    const logId = await writeAiTaskLog({
+      taskName,
+      promptVersion: options.promptVersion,
+      providerName,
+      providerModel,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+      durationMs: llmResult.durationMs,
+      success: true,
+      rawOutputPreview: preview(rawOutput),
+    });
+
+    return {
+      text: rawOutput,
       rawOutput,
       logId,
       providerName,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { retryWorkflow } from "@/lib/ai-workflow";
+import { kickAiWorker } from "@/lib/ai-worker-kick";
 
 export async function POST(
   _request: NextRequest,
@@ -8,6 +9,7 @@ export async function POST(
   try {
     const { id } = await params;
     const run = await retryWorkflow(id);
+    kickAiWorker(1);
     return NextResponse.json(run);
   } catch (error) {
     const message = error instanceof Error ? error.message : "重试任务失败";

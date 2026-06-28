@@ -5,12 +5,14 @@ interface LlmMessage {
   content: string;
 }
 
-interface LlmCallOptions {
+export interface LlmCallOptions {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
   maxRetries?: number;
   maxProviders?: number;
+  /** 优先匹配的 model 名称模式，用于按任务层级调度 Provider */
+  preferModelPatterns?: RegExp[];
 }
 
 const MAX_RETRIES = 2;
@@ -86,15 +88,17 @@ export async function callLlmDetailed(
     timeoutMs = 60000,
     maxRetries = MAX_RETRIES,
     maxProviders,
+    preferModelPatterns,
   } = options;
 
   const availableProviders = await prisma.llmProvider.findMany({
     where: { enabled: true },
     orderBy: { priority: "asc" },
   });
+  const sortedProviders = sortProvidersByPreference(availableProviders, preferModelPatterns);
   const providers = maxProviders === undefined
-    ? availableProviders
-    : availableProviders.slice(0, maxProviders);
+    ? sortedProviders
+    : sortedProviders.slice(0, maxProviders);
 
   if (providers.length === 0) {
     throw new Error("未配置可用的 LLM Provider，请在 API 配置中启用至少一个");
@@ -205,6 +209,27 @@ function getEnvApiKey(providerName: string): string | undefined {
 
 function resolveApiKey(provider: ProviderConfig): string | undefined {
   return provider.apiKey || getEnvApiKey(provider.name);
+}
+
+function sortProvidersByPreference<T extends { model: string; priority: number }>(
+  providers: T[],
+  patterns?: RegExp[]
+): T[] {
+  if (!patterns || patterns.length === 0) return providers;
+
+  return [...providers].sort((left, right) => {
+    const leftScore = scoreModelMatch(left.model, patterns);
+    const rightScore = scoreModelMatch(right.model, patterns);
+    if (leftScore !== rightScore) return rightScore - leftScore;
+    return left.priority - right.priority;
+  });
+}
+
+function scoreModelMatch(model: string, patterns: RegExp[]): number {
+  for (let i = 0; i < patterns.length; i++) {
+    if (patterns[i].test(model)) return patterns.length - i;
+  }
+  return 0;
 }
 
 function buildRequestBody(
