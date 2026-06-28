@@ -6,9 +6,8 @@ import { ArticleCard } from "@/components/article/ArticleCard";
 import { TypeTabBar } from "@/components/common/TypeTabBar";
 import { TypeFilterClient } from "./TypeFilterClient";
 
-// 动态渲染，避免构建时连接数据库
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+// 30 秒 ISR 缓存
+export const revalidate = 30;
 export const dynamicParams = true;
 
 export function generateStaticParams() {
@@ -35,11 +34,18 @@ async function getArticles(source: string) {
   try {
     const articles = await prisma.article.findMany({
       where: { source, status: "published" },
-      include: { tags: { include: { tag: true } }, painting: true },
+      select: {
+        id: true, slug: true, title: true, subtitle: true, author: true,
+        source: true, type: true, dateRaw: true, dateParsed: true,
+        createdAt: true, publishedAt: true, status: true, confidence: true,
+        body: true, // 仍需前 200 字摘要
+        tags: { select: { tag: { select: { name: true } } } },
+        painting: { select: { id: true, title: true, artist: true, dynasty: true, url: true, thumbnail: true, description: true, tags: true } },
+      },
       orderBy: { createdAt: "desc" },
-      take: 200,
+      take: 60,
     });
-    return articles.map((a) => serializeArticleListItem(a, 200));
+    return articles.map((a) => serializeArticleListItem(a as any, 200));
   } catch (e: any) {
     console.error("[getArticles] failed:", e.message, e.stack);
     return [];

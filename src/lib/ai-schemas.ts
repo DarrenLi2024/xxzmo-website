@@ -144,3 +144,15 @@ export type ArticleAssistResult = z.infer<typeof articleAssistSchema>;
 export type JiguImportResult = z.infer<typeof jiguImportSchema>;
 export type PinyinCalibrationResult = z.infer<typeof pinyinCalibrationSchema>;
 export type UnifiedAssistResult = z.infer<typeof unifiedAssistSchema>;
+
+// ============================================================
+// AI 去重决策 Schema
+// ============================================================
+export const dedupDecisionSchema = z.object({
+  keepId: z.string().describe("应该保留的文章ID"),
+  deleteId: z.string().describe("应该删除的文章ID"),
+  confidence: z.number().min(0).max(1).describe("决策置信度 0-1"),
+  reason: z.string().describe("决策理由"),
+});
+
+export type DedupDecisionResult = z.infer<typeof dedupDecisionSchema>;

@@ -35,10 +35,10 @@ function createPrismaClient() {
       }
 
       if (!urlObj.searchParams.has("connection_limit")) {
-        urlObj.searchParams.set("connection_limit", "1");
+        urlObj.searchParams.set("connection_limit", "5");
       }
       if (!urlObj.searchParams.has("pool_timeout")) {
-        urlObj.searchParams.set("pool_timeout", "20");
+        urlObj.searchParams.set("pool_timeout", "10");
       }
 
       url = urlObj.toString();

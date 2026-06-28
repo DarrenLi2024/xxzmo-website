@@ -84,6 +84,14 @@ export function AdminArticleList({
   const [totalPages, setTotalPages] = useState(1)
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
   const [duplicates, setDuplicates] = useState<DuplicatePair[]>([])
+  const [aiDecisions, setAiDecisions] = useState<Array<{
+    pair: DuplicatePair
+    keepId: string
+    deleteId: string
+    confidence: number
+    reason: string
+  }>>([])
+  const [aiDeciding, setAiDeciding] = useState(false)
   const [detectingDuplicates, setDetectingDuplicates] = useState(false)
   const [batchAiAssistLoading, setBatchAiAssistLoading] = useState(false)
   const [batchPinyinLoading, setBatchPinyinLoading] = useState(false)
@@ -679,6 +687,66 @@ export function AdminArticleList({
     })
   }
 
+  async function handleAiDedupDecision() {
+    if (duplicates.length === 0) return
+    setAiDeciding(true)
+    try {
+      const res = await fetch("/api/admin/articles/ai-dedup-decision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pairs: duplicates, autoExecute: false }),
+      })
+      const data = await res.json()
+      if (data.decisions && data.decisions.length > 0) {
+        setAiDecisions(data.decisions)
+        const highConf = data.decisions.filter((d: any) => d.confidence >= 0.7)
+        success(`AI 决策完成：建议删除 ${highConf.length} 组，${data.decisions.length - highConf.length} 组需人工确认`)
+      } else {
+        toastError(data.error || "AI 决策失败")
+      }
+    } catch {
+      toastError("AI 决策失败，请检查网络")
+    } finally {
+      setAiDeciding(false)
+    }
+  }
+
+  async function handleExecuteAiDecision() {
+    const toDelete = aiDecisions
+      .filter(d => d.confidence >= 0.7)
+      .map(d => d.deleteId)
+    if (toDelete.length === 0) {
+      toastError("没有高置信度的删除决策")
+      return
+    }
+    confirm({
+      title: `确认删除 ${toDelete.length} 篇重复文章？`,
+      description: "AI 建议删除这些文章，此操作不可恢复。",
+      variant: "danger",
+      async onConfirm() {
+        try {
+          const res = await fetch("/api/admin/articles/batch-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: toDelete }),
+          })
+          const data = await res.json()
+          if (data.deleted > 0) {
+            success(`批量删除完成：已删除 ${data.deleted} 篇文章`)
+            setDuplicates([])
+            setAiDecisions([])
+            setDuplicateDialogOpen(false)
+            fetchArticles()
+          } else {
+            toastError(data.error || "删除失败")
+          }
+        } catch {
+          toastError("删除失败")
+        }
+      },
+    })
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -1102,10 +1170,26 @@ export function AdminArticleList({
             </div>
             
             <div className="p-4 overflow-y-auto max-h-[60vh]">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm text-gray-500">
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <p className="text-sm text-gray-500 flex-1">
                   检测到 {duplicates.length} 组相似文章（相似度 ≥ 85%）
                 </p>
+                <button
+                  onClick={() => handleAiDedupDecision()}
+                  disabled={aiDeciding}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50"
+                >
+                  {aiDeciding ? "AI 决策中..." : "🤖 AI 决策"}
+                </button>
+                {aiDecisions.length > 0 && (
+                  <button
+                    onClick={() => handleExecuteAiDecision()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors"
+                  >
+                    <Trash size={14} />
+                    执行 AI 删除（{aiDecisions.filter(d => d.confidence >= 0.7).length}）
+                  </button>
+                )}
                 <button
                   onClick={() => handleDeleteAllDuplicates()}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors"
@@ -1114,7 +1198,30 @@ export function AdminArticleList({
                   一键删除全部重复项
                 </button>
               </div>
-              
+
+              {/* AI 决策结果 */}
+              {aiDecisions.length > 0 && (
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <h4 className="text-sm font-medium text-blue-900 mb-2">🤖 AI 决策结果</h4>
+                  <div className="space-y-1 text-xs">
+                    {aiDecisions.filter(d => d.confidence >= 0.7).map((dec, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-blue-800">
+                        <span className="text-green-600">✓ 保留</span>
+                        <span className="font-medium">{duplicates.find(p => p.id1 === dec.keepId || p.id2 === dec.keepId)?.title1 || dec.keepId}</span>
+                        <span className="text-red-600">✗ 删除</span>
+                        <span className="font-medium">{duplicates.find(p => p.id1 === dec.deleteId || p.id2 === dec.deleteId)?.title1 || dec.deleteId}</span>
+                        <span className="text-gray-500">（置信度 {Math.round(dec.confidence * 100)}%）</span>
+                      </div>
+                    ))}
+                    {aiDecisions.filter(d => d.confidence < 0.7).length > 0 && (
+                      <p className="text-amber-700 mt-1">
+                        ⚠️ {aiDecisions.filter(d => d.confidence < 0.7).length} 组置信度较低，需人工确认
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-3">
                 {duplicates.map((pair, index) => (
                   <div 

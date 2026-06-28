@@ -6,20 +6,20 @@ import { BlogTopicGarden } from "@/components/home/BlogTopicGarden";
 import { DailyQuoteSection } from "@/components/home/DailyQuoteSection";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// 动态渲染，避免构建时连接数据库
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+// 30 秒 ISR 缓存，平衡实时性与性能
+export const revalidate = 30;
 
 export default async function HomePage() {
-  const [stats, hero] = await Promise.all([
+  const [stats, hero, featured, groups] = await Promise.all([
     getHomeStats(),
     getHeroArticle(),
-  ]);
-
-  const [featured, groups] = await Promise.all([
-    getFeaturedArticles(hero?.id),
+    getFeaturedArticles(),
     getTopicGroups(),
   ]);
+
+  const filteredFeatured = hero
+    ? featured.filter(a => a.id !== hero.id).slice(0, 4)
+    : featured.slice(0, 4);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#FAF8F5" }}>
@@ -32,9 +32,9 @@ export default async function HomePage() {
         )}
 
         {/* 近作 — 卡片网格 */}
-        {featured.length > 0 && (
+        {filteredFeatured.length > 0 && (
           <Suspense fallback={<FeedSkeleton />}>
-            <BlogFeed articles={featured} />
+            <BlogFeed articles={filteredFeatured} />
           </Suspense>
         )}
 

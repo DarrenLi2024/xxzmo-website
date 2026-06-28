@@ -4,6 +4,7 @@ import type { Article, TagOnArticle, Tag, Painting } from "@prisma/client";
 
 // ============================================================
 // 首页精确查询 — 只选取需要的字段 + 利用索引
+// 所有查询都带 try-catch，确保数据库异常时首页仍能正常渲染
 // ============================================================
 
 type ArticleWithTagsAndPainting = Article & {
@@ -67,60 +68,75 @@ export interface HomeStats {
  * 首页统计 — 使用 COUNT 聚合，不取正文
  */
 export async function getHomeStats(): Promise<HomeStats> {
-  const [totalPublished, chuliCount, jiguCount, recentArticle] = await Promise.all([
-    prisma.article.count({ where: { status: "published" } }),
-    prisma.article.count({ where: { status: "published", source: "chuli" } }),
-    prisma.article.count({ where: { status: "published", source: "jigu" } }),
-    prisma.article.findFirst({
-      where: { status: "published" },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    }),
-  ]);
+  try {
+    const [totalPublished, chuliCount, jiguCount, recentArticle] = await Promise.all([
+      prisma.article.count({ where: { status: "published" } }),
+      prisma.article.count({ where: { status: "published", source: "chuli" } }),
+      prisma.article.count({ where: { status: "published", source: "jigu" } }),
+      prisma.article.findFirst({
+        where: { status: "published" },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      }),
+    ]);
 
-  return {
-    totalPublished,
-    chuliCount,
-    jiguCount,
-    recentUpdatedAt: recentArticle?.createdAt ?? null,
-  };
+    return {
+      totalPublished,
+      chuliCount,
+      jiguCount,
+      recentUpdatedAt: recentArticle?.createdAt ?? null,
+    };
+  } catch (e: any) {
+    console.error("[getHomeStats] failed:", e.message);
+    return { totalPublished: 0, chuliCount: 0, jiguCount: 0, recentUpdatedAt: null };
+  }
 }
 
 /**
  * Hero 文章 — 最新 1 篇带配图的已发布文章
  */
 export async function getHeroArticle(): Promise<HeroArticle | null> {
-  const article = await prisma.article.findFirst({
-    where: {
-      status: "published",
-      paintingId: { not: null },
-      painting: { is: { url: { not: "" } } },
-    },
-    orderBy: { createdAt: "desc" },
-    select: heroSelect,
-  });
+  try {
+    const article = await prisma.article.findFirst({
+      where: {
+        status: "published",
+        paintingId: { not: null },
+        painting: { is: { url: { not: "" } } },
+      },
+      orderBy: { createdAt: "desc" },
+      select: heroSelect,
+    });
 
-  if (!article) return null;
-  return serializeHeroArticle(article as any);
+    if (!article) return null;
+    return serializeHeroArticle(article as any);
+  } catch (e: any) {
+    console.error("[getHeroArticle] failed:", e.message);
+    return null;
+  }
 }
 
 /**
  * Featured 文章 — 除 Hero 外剩余带配图的 4 篇
  */
 export async function getFeaturedArticles(excludeId?: string): Promise<FeaturedArticle[]> {
-  const articles = await prisma.article.findMany({
-    where: {
-      status: "published",
-      paintingId: { not: null },
-      painting: { is: { url: { not: "" } } },
-      ...(excludeId ? { id: { not: excludeId } } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    select: featuredSelect,
-    take: 4,
-  });
+  try {
+    const articles = await prisma.article.findMany({
+      where: {
+        status: "published",
+        paintingId: { not: null },
+        painting: { is: { url: { not: "" } } },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      select: featuredSelect,
+      take: 4,
+    });
 
-  return articles.map(a => serializeFeaturedArticle(a as any));
+    return articles.map(a => serializeFeaturedArticle(a as any));
+  } catch (e: any) {
+    console.error("[getFeaturedArticles] failed:", e.message);
+    return [];
+  }
 }
 
 /**
@@ -147,21 +163,26 @@ export interface TopicGroup {
  * 主题分组查询 — 一次取所有已发布文章（不超过 200），客户端按标签分组
  */
 export async function getTopicGroups(): Promise<TopicGroup[]> {
-  const articles = await prisma.article.findMany({
-    where: { status: "published" },
-    orderBy: { createdAt: "desc" },
-    select: topicSelect,
-    take: 200,
-  });
+  try {
+    const articles = await prisma.article.findMany({
+      where: { status: "published" },
+      orderBy: { createdAt: "desc" },
+      select: topicSelect,
+      take: 100,
+    });
 
-  const list: TopicArticle[] = articles.map(a => serializeTopicArticle(a as any));
+    const list: TopicArticle[] = articles.map(a => serializeTopicArticle(a as any));
 
-  const groups: TopicGroup[] = Object.entries(TOPIC_GROUPS).map(([key, tags]) => {
-    const matched = list.filter(a => a.tags.some(t => tags.includes(t))).slice(0, 6);
-    return { key, label: key, articles: matched };
-  }).filter(g => g.articles.length > 0);
+    const groups: TopicGroup[] = Object.entries(TOPIC_GROUPS).map(([key, tags]) => {
+      const matched = list.filter(a => a.tags.some(t => tags.includes(t))).slice(0, 6);
+      return { key, label: key, articles: matched };
+    }).filter(g => g.articles.length > 0);
 
-  return groups;
+    return groups;
+  } catch (e: any) {
+    console.error("[getTopicGroups] failed:", e.message);
+    return [];
+  }
 }
 
 // ============================================================
