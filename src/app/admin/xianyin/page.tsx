@@ -5,6 +5,7 @@ import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, Loader2, FileText, Tag, Trash2, Sparkles, Copy, RefreshCw, ExternalLink, ChevronLeft, ChevronRight, PanelLeftClose, PanelRightClose } from "lucide-react";
 import { useToast } from "@/components/admin/Toast";
+import { consumeOpenAiSseStream } from "@/lib/sse-client";
 
 // ============================================================
 // 类型定义
@@ -185,13 +186,31 @@ export default function XianyinPage() {
     if (!writeInput.trim()) return;
     setWriteLoading(true);
     setWriteResult("");
+    setWriteProvider("");
     try {
-      const res = await fetch("/api/admin/xianyin/ai-write", {
+      const res = await fetch("/api/admin/xianyin/ai-write?stream=1", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: writeMode, type: writeType, input: writeInput.trim(), styleHint: styleHint.trim() || undefined }),
       });
-      if (res.ok) {
+
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("text/event-stream")) {
+        await consumeOpenAiSseStream(res, {
+          onToken: (token) => {
+            setWriteResult((prev) => prev + token);
+          },
+          onMeta: (meta) => {
+            if (typeof meta.output === "string") {
+              setWriteResult(meta.output);
+            }
+            if (typeof meta.provider === "string" && typeof meta.model === "string") {
+              setWriteProvider(`${meta.provider} (${meta.model})`);
+            }
+          },
+          onError: (message) => toastError(message),
+        });
+      } else if (res.ok) {
         const data = await res.json();
         setWriteResult(data.output);
         setWriteProvider(`${data.provider} (${data.model})`);
@@ -428,18 +447,26 @@ export default function XianyinPage() {
             </button>
 
             {/* 输出区 */}
-            {writeResult && (
+            {(writeResult || writeLoading) && (
               <div className="p-3 bg-white rounded-lg border-2 border-accent/30 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-ink-400">{writeProvider}</span>
+                  <span className="text-[10px] text-ink-400">
+                    {writeLoading && !writeResult ? "生成中…" : writeProvider}
+                  </span>
                   <div className="flex gap-1">
-                    <button onClick={() => { navigator.clipboard.writeText(writeResult); success("已复制"); }}
-                      className="text-xs text-ink-400 hover:text-accent flex items-center gap-0.5"><Copy size={12} /> 复制</button>
-                    <button onClick={() => sendToSource(writeResult)}
-                      className="text-xs text-ink-400 hover:text-accent flex items-center gap-0.5"><ExternalLink size={12} /> 设为源</button>
+                    {writeResult && (
+                      <>
+                        <button onClick={() => { navigator.clipboard.writeText(writeResult); success("已复制"); }}
+                          className="text-xs text-ink-400 hover:text-accent flex items-center gap-0.5"><Copy size={12} /> 复制</button>
+                        <button onClick={() => sendToSource(writeResult)}
+                          className="text-xs text-ink-400 hover:text-accent flex items-center gap-0.5"><ExternalLink size={12} /> 设为源</button>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="text-sm font-serif text-ink-800 leading-relaxed whitespace-pre-wrap">{writeResult}</div>
+                <div className="text-sm font-serif text-ink-800 leading-relaxed whitespace-pre-wrap min-h-[4rem]">
+                  {writeResult || (writeLoading ? "…" : "")}
+                </div>
               </div>
             )}
 

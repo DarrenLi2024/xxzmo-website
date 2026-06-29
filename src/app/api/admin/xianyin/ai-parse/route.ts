@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { runAiTask } from "@/lib/ai-task";
 import { XIANYIN_PARSE_PROMPT_VERSION } from "@/lib/prompts";
+import { estimateMaxTokens } from "@/lib/ai-token-budget";
 
 // 每批 5000 字，保证单次 LLM 调用在 8 秒内完成（远低于 Vercel 10s 限制）
 const CHUNK_SIZE = 5000;
@@ -91,8 +92,8 @@ async function parseText(text: string, label: string) {
     {
       promptVersion: XIANYIN_PARSE_PROMPT_VERSION,
       temperature: 0.05,
-      maxTokens: 8192,
-      timeoutMs: 120000,
+      maxTokens: estimateMaxTokens(text.length, "json-parse"),
+      timeoutMs: 90000,
     }
   );
 

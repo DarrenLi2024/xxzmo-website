@@ -91,14 +91,8 @@ export async function callLlmDetailed(
     preferModelPatterns,
   } = options;
 
-  const availableProviders = await prisma.llmProvider.findMany({
-    where: { enabled: true },
-    orderBy: { priority: "asc" },
-  });
-  const sortedProviders = sortProvidersByPreference(availableProviders, preferModelPatterns);
-  const providers = maxProviders === undefined
-    ? sortedProviders
-    : sortedProviders.slice(0, maxProviders);
+  const availableProviders = await getSortedProviders({ maxProviders, preferModelPatterns });
+  const providers = availableProviders;
 
   if (providers.length === 0) {
     throw new Error("未配置可用的 LLM Provider，请在 API 配置中启用至少一个");
@@ -236,13 +230,15 @@ function buildRequestBody(
   provider: ProviderConfig,
   messages: LlmMessage[],
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  stream = false
 ) {
   const body: {
     model: string;
     messages: LlmMessage[];
     temperature: number;
     max_tokens: number;
+    stream?: boolean;
     thinking?: { type: "disabled" };
     reasoning_split?: boolean;
   } = {
@@ -251,6 +247,10 @@ function buildRequestBody(
     temperature,
     max_tokens: maxTokens,
   };
+
+  if (stream) {
+    body.stream = true;
+  }
 
   if (provider.model === "deepseek-v4-pro" || provider.model === "deepseek-v4-flash") {
     // Current workflows consume a direct final response; keep V4 reasoning out of that budget.
@@ -263,6 +263,134 @@ function buildRequestBody(
   }
 
   return body;
+}
+
+async function getSortedProviders(options: LlmCallOptions) {
+  const { maxProviders, preferModelPatterns } = options;
+  const availableProviders = await prisma.llmProvider.findMany({
+    where: { enabled: true },
+    orderBy: { priority: "asc" },
+  });
+  const sortedProviders = sortProvidersByPreference(availableProviders, preferModelPatterns);
+  return maxProviders === undefined
+    ? sortedProviders
+    : sortedProviders.slice(0, maxProviders);
+}
+
+export interface LlmStreamHandlers {
+  onToken: (token: string) => void;
+}
+
+/** 流式 LLM 调用：边生成边回调 token，适合交互写作 */
+export async function callLlmStreamDetailed(
+  messages: LlmMessage[],
+  options: LlmCallOptions = {},
+  handlers: LlmStreamHandlers
+): Promise<LlmCallResult> {
+  const {
+    temperature = 0.7,
+    maxTokens = 4096,
+    timeoutMs = 120000,
+    maxRetries = 1,
+    maxProviders = 1,
+    preferModelPatterns,
+  } = options;
+
+  const providers = await getSortedProviders({ maxProviders, preferModelPatterns });
+  if (providers.length === 0) {
+    throw new Error("未配置可用的 LLM Provider，请在 API 配置中启用至少一个");
+  }
+
+  const provider = providers[0];
+  const startedAt = Date.now();
+  const apiKey = resolveApiKey(provider);
+  if (!apiKey) {
+    throw new Error(`${provider.label} 未配置 API Key`);
+  }
+
+  validateBaseUrl(provider.baseUrl);
+  const baseUrl = provider.baseUrl.replace(/\/+$/, "");
+  const url = `${baseUrl}/chat/completions`;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(buildRequestBody(provider, messages, temperature, maxTokens, true)),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        if (attempt < maxRetries && (res.status === 429 || res.status >= 500)) {
+          await sleep(1000 * (attempt + 1));
+          continue;
+        }
+        throw new Error(`${provider.label} 返回 ${res.status}${errText ? `：${errText.slice(0, 80)}` : ""}`);
+      }
+
+      if (!res.body) throw new Error(`${provider.label} 未返回流式响应`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let content = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string } }>;
+            };
+            const token = parsed.choices?.[0]?.delta?.content ?? "";
+            if (token) {
+              content += token;
+              handlers.onToken(token);
+            }
+          } catch {
+            // ignore malformed chunks
+          }
+        }
+      }
+
+      if (!content.trim()) {
+        throw new Error(`${provider.label} 流式返回空内容`);
+      }
+
+      return {
+        content,
+        providerName: provider.name,
+        providerLabel: provider.label,
+        providerModel: provider.model,
+        durationMs: Date.now() - startedAt,
+      };
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxRetries) {
+        await sleep(1000 * (attempt + 1));
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error("流式 LLM 调用失败");
 }
 
 function sleep(ms: number): Promise<void> {

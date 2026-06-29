@@ -54,7 +54,7 @@ export function getPromptRuntimeOptions(promptVersion: string): {
 } {
   switch (promptVersion) {
     case "unified-assist-v1-fast":
-      return { temperature: 0.15, maxTokens: 12288 };
+      return { temperature: 0.15, maxTokens: 6144 };
     case "article-review-v1-strict":
     case "article-review-v3-strict":
       return { temperature: 0.1, maxTokens: 2400 };

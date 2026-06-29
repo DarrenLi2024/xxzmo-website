@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runAiTextTask } from "@/lib/ai-task";
+import { runAiTextTask, runAiTextTaskStream } from "@/lib/ai-task";
 import { prisma } from "@/lib/prisma";
 import { logAdminAction } from "@/lib/admin-log";
+import { estimateMaxTokensFromParts } from "@/lib/ai-token-budget";
+import { createSseStream, sseResponse } from "@/lib/sse-server";
 
 const XIANYIN_WRITE_PROMPT_VERSION = "xianyin-write-v1";
 
@@ -104,6 +106,7 @@ export async function POST(request: NextRequest) {
   try {
     const body: WriteRequest = await request.json();
     const { mode, type, input, styleHint } = body;
+    const stream = request.nextUrl.searchParams.get("stream") === "1";
 
     if (!input?.trim()) {
       return NextResponse.json({ error: "请输入想法或诗文内容" }, { status: 400 });
@@ -133,18 +136,66 @@ export async function POST(request: NextRequest) {
       : "";
 
     const userMessage = `体裁：${type}\n\n${input}${styleNote}\n\n请开始创作。`;
+    const taskName = `xianyin.write.${mode}`;
+    const maxTokens = estimateMaxTokensFromParts("text-write", input, styleHint);
+    const messages = [
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: userMessage },
+    ];
+    const taskOptions = {
+      promptVersion: XIANYIN_WRITE_PROMPT_VERSION,
+      temperature: 0.85,
+      maxTokens,
+      timeoutMs: 90000,
+    };
+
+    if (stream) {
+      const sse = createSseStream(async (send) => {
+        const result = await runAiTextTaskStream(
+          taskName,
+          messages,
+          taskOptions,
+          (token) => send({ type: "token", token })
+        );
+
+        const output = extractPoemContent(result.text, mode === "continue");
+
+        await logAdminAction({
+          action: "xianyin.ai-write",
+          entityType: "xianyin",
+          summary: `AI ${WRITE_MODES.find(m => m.value === mode)?.label || mode} - ${type}`,
+          metadata: {
+            mode,
+            type,
+            inputLength: input.length,
+            outputLength: output.length,
+            provider: result.providerName,
+            model: result.providerModel,
+            durationMs: result.durationMs,
+            logId: result.logId,
+            stream: true,
+          },
+        });
+
+        send({
+          type: "meta",
+          output,
+          mode,
+          articleType: type,
+          provider: result.providerName,
+          model: result.providerModel,
+          durationMs: result.durationMs,
+          logId: result.logId,
+        });
+      });
+
+      return sseResponse(sse);
+    }
 
     const result = await runAiTextTask(
-      `xianyin.write.${mode}`,
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      {
-        promptVersion: XIANYIN_WRITE_PROMPT_VERSION,
-        temperature: 0.85,
-        maxTokens: 4096,
-      }
+      taskName,
+      messages,
+      taskOptions
     );
 
     const output = extractPoemContent(result.text, mode === "continue");

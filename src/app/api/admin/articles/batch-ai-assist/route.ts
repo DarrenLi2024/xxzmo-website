@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { runAiTask } from "@/lib/ai-task";
 import { articleAssistSchema } from "@/lib/ai-schemas";
 import { ARTICLE_ASSIST_PROMPT_VERSION, buildArticleAssistMessages } from "@/lib/prompts";
+import { estimateMaxTokensFromParts } from "@/lib/ai-token-budget";
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,7 +51,14 @@ export async function POST(request: NextRequest) {
           {
             promptVersion: ARTICLE_ASSIST_PROMPT_VERSION,
             temperature: 0.3,
-            maxTokens: 8192,
+            maxTokens: estimateMaxTokensFromParts(
+              "json-assist",
+              article.title,
+              article.body,
+              article.preface,
+              article.postscript,
+              article.notes
+            ),
           }
         );
 

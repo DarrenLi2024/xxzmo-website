@@ -3,6 +3,7 @@ import { runAiTask } from "@/lib/ai-task";
 import { unifiedAssistSchema, UNIFIED_ASSIST_PROMPT_VERSION } from "@/lib/ai-schemas";
 import { buildUnifiedAssistMessages } from "@/lib/prompts";
 import { resolvePromptVersion, getPromptRuntimeOptions } from "@/lib/prompt-experiments";
+import { estimateMaxTokensFromParts } from "@/lib/ai-token-budget";
 import {
   applyContextPinyinCorrections,
   buildArticlePinyinData,
@@ -100,6 +101,15 @@ export async function runUnifiedCalibration(
   // 2. 一次 LLM 调用完成两部分任务（Prompt A/B 分桶）
   const promptVersion = resolvePromptVersion("article.unified-calibration", articleId);
   const runtimeOptions = getPromptRuntimeOptions(promptVersion);
+  const maxTokens = runtimeOptions.maxTokens
+    ?? estimateMaxTokensFromParts(
+      "json-unified",
+      article.title,
+      article.body,
+      article.preface,
+      article.postscript,
+      article.notes
+    );
 
   const aiResult = await runAiTask(
     "article.unified-calibration",
@@ -118,8 +128,8 @@ export async function runUnifiedCalibration(
     {
       promptVersion,
       temperature: runtimeOptions.temperature ?? 0.25,
-      maxTokens: runtimeOptions.maxTokens ?? 16384,
-      timeoutMs: 120000,
+      maxTokens,
+      timeoutMs: 90000,
     }
   );
 

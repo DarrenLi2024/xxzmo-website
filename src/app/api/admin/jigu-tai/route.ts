@@ -5,6 +5,7 @@ import { logAdminAction } from "@/lib/admin-log";
 import { runAiTask } from "@/lib/ai-task";
 import { jiguSourceExtractSchema } from "@/lib/ai-schemas";
 import { JIGU_IMPORT_PROMPT_VERSION } from "@/lib/prompts";
+import { estimateMaxTokens } from "@/lib/ai-token-budget";
 
 interface SourceCandidate {
   id: string;
@@ -68,9 +69,9 @@ export async function POST(request: NextRequest) {
 // ===================================================
 
 async function searchSources(title: string): Promise<SourceCandidate[]> {
-  const llm = await llmExtract(title).catch(() => []);
-  if (llm.length > 0) return llm;
-  return searchWikisource(title).catch(() => []);
+  const wiki = await searchWikisource(title).catch(() => []);
+  if (wiki.length > 0) return wiki;
+  return llmExtract(title).catch(() => []);
 }
 
 // ---- 维基文库 ----
@@ -137,8 +138,8 @@ async function llmExtract(title: string): Promise<SourceCandidate[]> {
       {
         promptVersion: JIGU_IMPORT_PROMPT_VERSION,
         temperature: 0.3,
-        maxTokens: 8192,
-        timeoutMs: 90000,
+        maxTokens: estimateMaxTokens(title.length * 40, "json-jigu"),
+        timeoutMs: 60000,
       }
     );
 

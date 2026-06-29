@@ -15,6 +15,7 @@ import { runParallelExperts } from "@/lib/parallel-experts";
 import { recommendPaintingsForPoem } from "@/lib/painting-match";
 import { persistArticleEmbedding } from "@/lib/ai-embedding";
 import { resolvePromptVersion, getPromptRuntimeOptions } from "@/lib/prompt-experiments";
+import { estimateMaxTokensFromParts } from "@/lib/ai-token-budget";
 import { WORKFLOW_STEPS, type AiWorkflowStepName } from "@/lib/ai-workflow-types";
 
 export { WORKFLOW_STEPS, type AiWorkflowStepName } from "@/lib/ai-workflow-types";
@@ -752,6 +753,15 @@ async function generateReviewReport(articleId: string) {
 
   const promptVersion = resolvePromptVersion("article.review", articleId);
   const runtimeOptions = getPromptRuntimeOptions(promptVersion);
+  const reviewMaxTokens = runtimeOptions.maxTokens
+    ?? estimateMaxTokensFromParts(
+      "json-review",
+      article.title,
+      article.body,
+      article.translation,
+      article.appreciation,
+      article.annotations
+    );
 
   const aiResult = await runAiTask(
     "article.review",
@@ -769,7 +779,7 @@ async function generateReviewReport(articleId: string) {
     {
       promptVersion,
       temperature: runtimeOptions.temperature ?? 0.2,
-      maxTokens: runtimeOptions.maxTokens ?? 2200,
+      maxTokens: reviewMaxTokens,
     }
   );
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { callLlmDetailed } from "@/lib/llm-service";
+import { callLlmDetailed, callLlmStreamDetailed } from "@/lib/llm-service";
 import { resolveLlmOptionsForTask } from "@/lib/ai-provider-policy";
 
 interface AiMessage {
@@ -117,6 +117,77 @@ export async function runAiTextTask(
       maxRetries: options.maxRetries,
       maxProviders: options.maxProviders,
     }));
+    rawOutput = llmResult.content;
+    providerName = llmResult.providerName;
+    providerModel = llmResult.providerModel;
+
+    const logId = await writeAiTaskLog({
+      taskName,
+      promptVersion: options.promptVersion,
+      providerName,
+      providerModel,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+      durationMs: llmResult.durationMs,
+      success: true,
+      rawOutputPreview: preview(rawOutput),
+    });
+
+    return {
+      text: rawOutput,
+      rawOutput,
+      logId,
+      providerName,
+      providerModel,
+      durationMs: llmResult.durationMs,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await writeAiTaskLog({
+      taskName,
+      promptVersion: options.promptVersion,
+      providerName,
+      providerModel,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+      durationMs: Date.now() - startedAt,
+      success: false,
+      error: message,
+      rawOutputPreview: rawOutput ? preview(rawOutput) : undefined,
+    });
+    throw error;
+  }
+}
+
+/** 流式文本任务：适合闲吟写作等交互场景 */
+export async function runAiTextTaskStream(
+  taskName: string,
+  messages: AiMessage[],
+  options: AiTaskOptions,
+  onToken: (token: string) => void
+): Promise<AiTextTaskResult> {
+  const startedAt = Date.now();
+  let providerName: string | undefined;
+  let providerModel: string | undefined;
+  let rawOutput = "";
+
+  try {
+    const llmResult = await callLlmStreamDetailed(
+      messages,
+      resolveLlmOptionsForTask(taskName, {
+        temperature: options.temperature,
+        maxTokens: options.maxTokens,
+        timeoutMs: options.timeoutMs,
+        maxRetries: options.maxRetries,
+        maxProviders: options.maxProviders ?? 1,
+      }),
+      {
+        onToken: (token) => {
+          rawOutput += token;
+          onToken(token);
+        },
+      }
+    );
     rawOutput = llmResult.content;
     providerName = llmResult.providerName;
     providerModel = llmResult.providerModel;

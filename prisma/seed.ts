@@ -27,18 +27,18 @@ async function main() {
   // LLM Provider 默认配置
   const providers = [
     {
-      name: "deepseek-v4-pro",
-      label: "DeepSeek V4-Pro",
-      baseUrl: "https://api.deepseek.com/v1",
-      model: "deepseek-v4-pro",
-      priority: 1,
-      enabled: true,
-    },
-    {
       name: "deepseek-v4-flash",
       label: "DeepSeek V4-Flash",
       baseUrl: "https://api.deepseek.com/v1",
       model: "deepseek-v4-flash",
+      priority: 1,
+      enabled: true,
+    },
+    {
+      name: "deepseek-v4-pro",
+      label: "DeepSeek V4-Pro",
+      baseUrl: "https://api.deepseek.com/v1",
+      model: "deepseek-v4-pro",
       priority: 2,
       enabled: true,
     },
