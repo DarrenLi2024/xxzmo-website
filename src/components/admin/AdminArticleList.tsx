@@ -70,6 +70,7 @@ export function AdminArticleList({
 }: Props) {
   const [articles, setArticles] = useState<ArticleAdminData[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null)
   const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "review" | "published">("all")
@@ -108,25 +109,39 @@ export function AdminArticleList({
   const filteredArticles = articles;
 
   const fetchArticles = useCallback(async () => {
-    const params = new URLSearchParams({
-      source,
-      status: statusFilter,
-      page: page.toString(),
-      pageSize: pageSize.toString(),
-    })
-    if (searchQuery.trim()) params.set("search", searchQuery.trim())
-    if (typeFilter) params.set("type", typeFilter)
-    if (tagFilter.trim()) params.set("tag", tagFilter.trim())
-    if (aiStatusFilter !== "all") params.set("aiStatus", aiStatusFilter)
-    if (dateFrom) params.set("dateFrom", dateFrom)
-    if (dateTo) params.set("dateTo", dateTo)
-    const res = await fetch(`/api/admin/articles?${params}`)
-    const data = await res.json()
-    setArticles(data.articles || [])
-    setTotal(data.total || 0)
-    setTotalPages(data.totalPages || 1)
-    setSelected(new Set())
-    setLoading(false)
+    setLoadError(null)
+    try {
+      const params = new URLSearchParams({
+        source,
+        status: statusFilter,
+        page: page.toString(),
+        pageSize: pageSize.toString(),
+      })
+      if (searchQuery.trim()) params.set("search", searchQuery.trim())
+      if (typeFilter) params.set("type", typeFilter)
+      if (tagFilter.trim()) params.set("tag", tagFilter.trim())
+      if (aiStatusFilter !== "all") params.set("aiStatus", aiStatusFilter)
+      if (dateFrom) params.set("dateFrom", dateFrom)
+      if (dateTo) params.set("dateTo", dateTo)
+      const res = await fetch(`/api/admin/articles?${params}`)
+      const data = await res.json()
+      if (!res.ok) {
+        setLoadError(data.error || "加载文章列表失败")
+        setArticles([])
+        setTotal(0)
+        setTotalPages(1)
+        return
+      }
+      setArticles(data.articles || [])
+      setTotal(data.total || 0)
+      setTotalPages(data.totalPages || 1)
+      setSelected(new Set())
+    } catch {
+      setLoadError("网络错误，无法加载文章列表")
+      setArticles([])
+    } finally {
+      setLoading(false)
+    }
   }, [aiStatusFilter, page, pageSize, searchQuery, source, statusFilter, tagFilter, typeFilter, dateFrom, dateTo])
 
   useEffect(() => { fetchArticles() }, [fetchArticles])
@@ -690,6 +705,19 @@ export function AdminArticleList({
           setPage(1)
         }}
       />
+
+      {loadError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {loadError}
+          <button
+            type="button"
+            onClick={() => { setLoading(true); void fetchArticles() }}
+            className="ml-3 underline hover:no-underline"
+          >
+            重试
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <TableSkeleton rows={5} />

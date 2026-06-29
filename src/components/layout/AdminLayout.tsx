@@ -35,7 +35,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         onToggle={() => setCollapsed(!collapsed)}
       />
 
-      <div className={cn("admin-main", collapsed && "admin-main.collapsed")}>
+      <div className={cn("admin-main", collapsed && "collapsed")}>
         <header className="admin-header">
           <div className="flex items-center gap-4 flex-1">
             {/* Search trigger */}

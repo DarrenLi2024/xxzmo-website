@@ -9,57 +9,63 @@ import { logAdminAction } from "@/lib/admin-log";
 import { createArticleWorkflow } from "@/lib/ai-workflow";
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const source = searchParams.get("source");
-  const status = searchParams.get("status") || "all";
-  const type = searchParams.get("type");
-  const tag = searchParams.get("tag");
-  const search = searchParams.get("search");
-  const dateFrom = searchParams.get("dateFrom");
-  const dateTo = searchParams.get("dateTo");
-  const aiStatus = searchParams.get("aiStatus") || "all";
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-  const pageSize = Math.min(500, Math.max(1, parseInt(searchParams.get("pageSize") || "20", 10)));
+  try {
+    const { searchParams } = new URL(request.url);
+    const source = searchParams.get("source");
+    const status = searchParams.get("status") || "all";
+    const type = searchParams.get("type");
+    const tag = searchParams.get("tag");
+    const search = searchParams.get("search");
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
+    const aiStatus = searchParams.get("aiStatus") || "all";
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+    const pageSize = Math.min(500, Math.max(1, parseInt(searchParams.get("pageSize") || "20", 10)));
 
-  const where: Record<string, unknown> = {};
-  if (source) where.source = source;
-  if (status !== "all") where.status = status;
-  if (aiStatus !== "all") where.aiStatus = aiStatus === "none" ? null : aiStatus;
-  if (type) where.type = type;
-  if (tag) where.tags = { some: { tag: { name: tag } } };
-  if (search) {
-    where.OR = [
-      { title: { contains: search } },
-      { body: { contains: search } },
-      { author: { contains: search } },
-      { tagList: { contains: search } },
-    ];
+    const where: Record<string, unknown> = {};
+    if (source) where.source = source;
+    if (status !== "all") where.status = status;
+    if (aiStatus !== "all") where.aiStatus = aiStatus === "none" ? null : aiStatus;
+    if (type) where.type = type;
+    if (tag) where.tags = { some: { tag: { name: tag } } };
+    if (search) {
+      where.OR = [
+        { title: { contains: search } },
+        { body: { contains: search } },
+        { author: { contains: search } },
+        { tagList: { contains: search } },
+      ];
+    }
+    if (dateFrom || dateTo) {
+      const createdAtFilter: Record<string, Date> = {};
+      if (dateFrom) createdAtFilter.gte = new Date(dateFrom);
+      if (dateTo) createdAtFilter.lte = new Date(dateTo + "T23:59:59.999Z");
+      where.createdAt = createdAtFilter;
+    }
+
+    const [articles, total] = await Promise.all([
+      prisma.article.findMany({
+        where,
+        include: { tags: { include: { tag: true } }, painting: true },
+        orderBy: { updatedAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.article.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      articles: articles.map((article) => serializeArticleAdmin(article)),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "获取文章列表失败";
+    console.error("[admin/articles GET]", message);
+    return NextResponse.json({ error: message, articles: [] }, { status: 500 });
   }
-  if (dateFrom || dateTo) {
-    const createdAtFilter: Record<string, Date> = {};
-    if (dateFrom) createdAtFilter.gte = new Date(dateFrom);
-    if (dateTo) createdAtFilter.lte = new Date(dateTo + "T23:59:59.999Z");
-    where.createdAt = createdAtFilter;
-  }
-
-  const [articles, total] = await Promise.all([
-    prisma.article.findMany({
-      where,
-      include: { tags: { include: { tag: true } }, painting: true },
-      orderBy: { updatedAt: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.article.count({ where }),
-  ]);
-
-  return NextResponse.json({
-    articles: articles.map((article) => serializeArticleAdmin(article)),
-    total,
-    page,
-    pageSize,
-    totalPages: Math.max(1, Math.ceil(total / pageSize)),
-  });
 }
 
 export async function POST(request: NextRequest) {
