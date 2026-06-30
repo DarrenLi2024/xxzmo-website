@@ -144,7 +144,7 @@ function buildReviewPrompt(article: {
 }) {
   return `请校审以下文章。重点检查：错字、断句、诗体换行、注释是否过度或失准、译文是否偏离原意、赏析是否空泛、格律或文体风险、事实与典故风险、发布前是否还需人工复核。
 
-必须只返回如下 JSON 结构：
+必须只返回如下 JSON 结构（严格合法 JSON，勿输出 Markdown）：
 {
   "overall": "pass | review | risk",
   "score": 0-100,
@@ -164,6 +164,11 @@ function buildReviewPrompt(article: {
   "strengths": ["值得保留的优点"],
   "publishAdvice": "发布前建议"
 }
+
+JSON 输出规则：
+- 字符串内如需引号请用中文书名号「」，勿使用未转义的英文双引号
+- issues 最多 8 条，每条字段保持简短，避免换行符
+- 数组与对象末尾禁止尾逗号
 
 可直接修改的问题必须填写 field、original、replacement，且 original 必须逐字出现在对应字段中；仅需人工判断或缺少证据的问题请省略 field，并将 original、replacement 留空。
 

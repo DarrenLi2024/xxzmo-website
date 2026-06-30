@@ -72,11 +72,11 @@ export const reviewIssueSchema = z.object({
 
 export const articleReviewSchema = z.object({
   overall: z.enum(["pass", "review", "risk"]).default("review"),
-  score: z.number().min(0).max(100).default(70),
-  summary: z.string(),
+  score: z.coerce.number().min(0).max(100).default(70),
+  summary: z.string().default("AI 已完成基础校审，请人工复核重点问题。"),
   issues: z.array(reviewIssueSchema).default([]),
   strengths: z.array(z.string()).default([]),
-  publishAdvice: z.string(),
+  publishAdvice: z.string().default("建议人工通读后再发布。"),
 });
 
 export const formatAnalysisSchema = z.object({

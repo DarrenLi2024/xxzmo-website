@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { parseLlmJsonText } from "@/lib/json-repair";
 import { callLlmDetailed, callLlmStreamDetailed } from "@/lib/llm-service";
 import { resolveLlmOptionsForTask } from "@/lib/ai-provider-policy";
 
@@ -231,21 +232,7 @@ export async function runAiTextTaskStream(
 }
 
 export function parseJsonObject(raw: string): unknown {
-  const trimmed = raw.trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced) return JSON.parse(fenced[1].trim());
-
-    const firstBrace = trimmed.indexOf("{");
-    const lastBrace = trimmed.lastIndexOf("}");
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-      return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1));
-    }
-
-    throw new Error("AI 返回内容不是有效 JSON");
-  }
+  return parseLlmJsonText(raw);
 }
 
 export async function getAiTaskStats() {
