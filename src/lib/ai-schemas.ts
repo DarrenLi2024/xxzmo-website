@@ -1,10 +1,32 @@
 import { z } from "zod";
 
+/** LLM 常返回「无」「见正文」等非 URL 文本，校验前归一化为空或合法 http(s) URL */
+function normalizeOptionalSourceUrl(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.href;
+    }
+  } catch {
+    // 非法 URL 丢弃，避免阻断整次 AI 辅助
+  }
+  return "";
+}
+
+const optionalSourceUrlSchema = z.preprocess(
+  normalizeOptionalSourceUrl,
+  z.string()
+);
+
 export const annotationSchema = z.object({
   term: z.string(),
   explanation: z.string(),
   sourceTitle: z.string().optional(),
-  sourceUrl: z.string().url().optional().or(z.literal("")),
+  sourceUrl: optionalSourceUrlSchema.optional(),
   quote: z.string().optional(),
   confidence: z.number().min(0).max(1).optional(),
 });
