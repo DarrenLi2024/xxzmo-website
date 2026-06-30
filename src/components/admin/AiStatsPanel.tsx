@@ -11,6 +11,7 @@ import {
   BarChart3,
 } from "lucide-react"
 import { useAiWorkflow, type AiWorkflowStats } from "@/hooks/useAiWorkflow"
+import { useToast } from "@/components/admin/Toast"
 
 type AiStatusFilter = "all" | "queued" | "running" | "review" | "ready" | "failed" | "none"
 
@@ -36,7 +37,10 @@ const STAT_ITEMS: Array<{
 ]
 
 export function AiStatsPanel({ onFilterChange, activeFilter }: AiStatsPanelProps) {
-  const { stats, loading, kicking, fetchStats, kickWorker } = useAiWorkflow()
+  const { success, error: toastError } = useToast()
+  const { stats, loading, kicking, recovering, fetchStats, kickWorker, recoverStuck } = useAiWorkflow({
+    pollIntervalMs: 10000,
+  })
 
   if (loading) {
     return (
@@ -64,6 +68,23 @@ export function AiStatsPanel({ onFilterChange, activeFilter }: AiStatsPanelProps
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {(stats.running > 0 || stats.queued > 0) && (
+            <button
+              onClick={async () => {
+                const result = await recoverStuck()
+                if (result.ok && result.message) {
+                  success(result.message)
+                } else if (result.error) {
+                  toastError(result.error)
+                }
+              }}
+              disabled={recovering || kicking}
+              className="text-xs text-amber-700 hover:text-amber-900 transition-colors inline-flex items-center gap-1 disabled:opacity-50"
+            >
+              <AlertCircle size={12} className={recovering ? "animate-pulse" : ""} />
+              恢复卡住
+            </button>
+          )}
           <button
             onClick={() => void kickWorker(3)}
             disabled={kicking}

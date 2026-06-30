@@ -104,7 +104,10 @@ export function AdminArticleList({
   const [traceRunId, setTraceRunId] = useState<string | null>(null)
   const { success, error: toastError } = useToast()
   const { confirm } = useConfirm()
-  const { enqueueArticles, findLatestRun, retryRun } = useAiWorkflow({ autoKick: false })
+  const { enqueueArticles, findLatestRun, retryRun } = useAiWorkflow({
+    pollIntervalMs: 10000,
+    autoKick: true,
+  })
 
   const filteredArticles = articles;
 

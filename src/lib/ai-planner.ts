@@ -84,6 +84,12 @@ export async function planArticlePipeline(
     }
   }
 
+  // 批量模式跳过 LLM 校审，由 decision.route 做最终路由（提速）
+  if (policy === "batch-unified") {
+    skipSteps.push("article.review");
+    skipReasons["article.review"] = "批量模式跳过校审，由路由决策";
+  }
+
   // 配图推荐：仅 full / with-painting policy，且未绑定配图
   if (!PAINTING_POLICIES.has(policy) || article.paintingId) {
     skipSteps.push("painting.recommend");

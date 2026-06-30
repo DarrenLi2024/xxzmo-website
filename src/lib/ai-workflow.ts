@@ -16,6 +16,7 @@ import { recommendPaintingsForPoem } from "@/lib/painting-match";
 import { persistArticleEmbedding } from "@/lib/ai-embedding";
 import { resolvePromptVersion, getPromptRuntimeOptions } from "@/lib/prompt-experiments";
 import { estimateMaxTokensFromParts } from "@/lib/ai-token-budget";
+import { runWithConcurrency } from "@/lib/concurrency";
 import { WORKFLOW_STEPS, type AiWorkflowStepName } from "@/lib/ai-workflow-types";
 
 export { WORKFLOW_STEPS, type AiWorkflowStepName } from "@/lib/ai-workflow-types";
@@ -59,11 +60,20 @@ interface ReviewReport {
 }
 
 // === Constants ===
-const ZOMBIE_STEP_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
-const ZOMBIE_RUN_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
-const MAX_INPUT_LENGTH = 50000; // safety limit for AI inputs
+/** Serverless 函数被杀后，running 步骤应在数分钟内恢复 */
+const ZOMBIE_STEP_THRESHOLD_MS = 3 * 60 * 1000;
+const ZOMBIE_RUN_THRESHOLD_MS = 8 * 60 * 1000;
+const STALE_STEP_RECLAIM_MS = 90 * 1000;
+const MAX_INPUT_LENGTH = 50000;
 const MAX_RUNS_PER_WORKER = 5;
-const WORKER_LEASE_MS = 5 * 60 * 1000;
+const WORKER_LEASE_MS = 4 * 60 * 1000;
+
+const LLM_STEPS = new Set<AiWorkflowStepName>([
+  "article.unified-calibration",
+  "format.analyze",
+  "article.review",
+  "painting.recommend",
+]);
 
 function createWorkerId() {
   return `w_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -125,8 +135,7 @@ export async function createArticleWorkflows(articleIds: string[], options?: {
   policy?: string;
   priority?: number;
 }) {
-  const results = [];
-  for (const articleId of articleIds) {
+  return runWithConcurrency(articleIds, 5, async (articleId) => {
     try {
       const run = await createArticleWorkflow({
         articleId,
@@ -135,13 +144,12 @@ export async function createArticleWorkflows(articleIds: string[], options?: {
         policy: options?.policy,
         priority: options?.priority,
       });
-      results.push({ articleId, runId: run.id, status: "queued" as const });
+      return { articleId, runId: run.id, status: "queued" as const };
     } catch (error) {
       const message = error instanceof Error ? error.message : "创建任务失败";
-      results.push({ articleId, runId: null, status: "failed" as const, error: message });
+      return { articleId, runId: null, status: "failed" as const, error: message };
     }
-  }
-  return results;
+  });
 }
 
 // ============================================================================
@@ -163,11 +171,20 @@ export async function runWorkflowWorker(options: WorkerOptions = {}) {
     claimed.push(run);
   }
 
-  const results = await Promise.all(claimed.map((run) => executeRun(run.id, workerId)));
+  const results = [];
+  for (const run of claimed) {
+    results.push(await executeRun(run.id, workerId));
+  }
+
+  const queuedRemaining = await prisma.aiWorkflowRun.count({
+    where: { status: "queued" },
+  });
+
   return {
     workerId,
     claimed: claimed.length,
     results,
+    queuedRemaining,
   };
 }
 
@@ -177,10 +194,15 @@ async function claimNextRun(workerId: string) {
 
   const run = await prisma.aiWorkflowRun.findFirst({
     where: {
-      status: "queued",
       OR: [
-        { lockedUntil: null },
-        { lockedUntil: { lt: now } },
+        {
+          status: "queued",
+          OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }],
+        },
+        {
+          status: "running",
+          lockedUntil: { lt: now },
+        },
       ],
     },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
@@ -190,10 +212,15 @@ async function claimNextRun(workerId: string) {
   const updated = await prisma.aiWorkflowRun.updateMany({
     where: {
       id: run.id,
-      status: "queued",
       OR: [
-        { lockedUntil: null },
-        { lockedUntil: { lt: now } },
+        {
+          status: "queued",
+          OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }],
+        },
+        {
+          status: "running",
+          lockedUntil: { lt: now },
+        },
       ],
     },
     data: {
@@ -247,16 +274,17 @@ async function executeRun(runId: string, workerId?: string) {
       ]
     );
 
-    for (const step of run.steps) {
-      if (step.status === "completed" || step.status === "skipped") continue;
+    let pauseAfterStep = false;
 
-      // If dedup already blocked, skip remaining steps
+    for (const step of run.steps) {
+      const liveStep = await prisma.aiWorkflowStep.findUnique({ where: { id: step.id } });
+      if (!liveStep || liveStep.status === "completed" || liveStep.status === "skipped") continue;
+
       if (dedupBlocked) {
         await skipStep(step.id, "去重阻断");
         continue;
       }
 
-      // Planner: skip steps that don't need re-processing
       if (plan.skipSteps.includes(step.name as AiWorkflowStepName)) {
         await skipStep(step.id, plan.skipReasons[step.name as AiWorkflowStepName] || "Planner 跳过");
         continue;
@@ -270,10 +298,8 @@ async function executeRun(runId: string, workerId?: string) {
         plan.contentHash
       );
 
-      // Check if dedup blocked the pipeline
       if (output && typeof output === "object" && "duplicate" in output && output.duplicate === true) {
         dedupBlocked = true;
-        // Save dedup decision
         await saveStepDecision(
           run.id,
           run.articleId,
@@ -282,22 +308,41 @@ async function executeRun(runId: string, workerId?: string) {
           typeof output.similarity === "number" ? output.similarity : undefined,
           [output.type === "exact" ? "精确重复" : "相似重复"]
         );
-        // Update article with dedup info
         if (output.similarity && typeof output.similarity === "number" && output.similarity >= 0.98) {
-          // Exact duplicate: mark as review with high risk
           await prisma.article.update({
             where: { id: run.articleId },
             data: { aiStatus: "review", aiRiskLevel: "high", aiUpdatedAt: new Date() },
           });
         }
       }
+
+      // 每个 LLM 步骤单独占一次 serverless 调用，避免整篇流水线超时卡死
+      if (LLM_STEPS.has(step.name as AiWorkflowStepName)) {
+        pauseAfterStep = true;
+        break;
+      }
     }
 
-    const finalStatus = dedupBlocked ? "completed" : "completed";
+    const incomplete = await hasIncompleteSteps(run.id);
+    if (incomplete && !dedupBlocked) {
+      await releaseRunForNextTick(run.id);
+      const progress = await getRunProgress(run.id);
+      return { runId, status: "partial", partial: true, progress, pauseAfterStep };
+    }
+
+    if (incomplete && dedupBlocked) {
+      for (const step of run.steps) {
+        const liveStep = await prisma.aiWorkflowStep.findUnique({ where: { id: step.id } });
+        if (liveStep && liveStep.status !== "completed" && liveStep.status !== "skipped") {
+          await skipStep(step.id, "去重阻断");
+        }
+      }
+    }
+
     const completedRun = await prisma.aiWorkflowRun.update({
       where: { id: run.id },
       data: {
-        status: finalStatus,
+        status: "completed",
         progress: 100,
         completedAt: new Date(),
         error: dedupBlocked ? "去重阻断：检测到重复内容" : null,
@@ -308,6 +353,12 @@ async function executeRun(runId: string, workerId?: string) {
 
     return { runId, status: completedRun.status, dedupBlocked };
   } catch (error) {
+    if (error instanceof Error && error.message === "STEP_IN_PROGRESS") {
+      await releaseRunForNextTick(run.id);
+      const progress = await getRunProgress(run.id);
+      return { runId, status: "partial", partial: true, progress };
+    }
+
     const message = error instanceof Error ? error.message : "任务执行失败";
     await prisma.aiWorkflowRun.update({
       where: { id: run.id },
@@ -353,14 +404,26 @@ async function executeStep(
     },
   });
   if (claimed.count === 0) {
-    // Already running or completed by another process
-    if (step.status !== "running") {
-      return null;
-    }
-    // Wait briefly for another worker to finish, then refetch
-    await new Promise((r) => setTimeout(r, 1000));
     const refreshed = await prisma.aiWorkflowStep.findUnique({ where: { id: step.id } });
-    return refreshed?.output ? JSON.parse(refreshed.output) : null;
+    if (!refreshed) return null;
+    if (refreshed.status === "completed" || refreshed.status === "skipped") {
+      return refreshed.output ? JSON.parse(refreshed.output) : null;
+    }
+    if (refreshed.status === "running") {
+      const staleMs = Date.now() - refreshed.updatedAt.getTime();
+      if (staleMs >= STALE_STEP_RECLAIM_MS) {
+        await prisma.aiWorkflowStep.update({
+          where: { id: step.id },
+          data: {
+            status: "queued",
+            error: "步骤执行超时，已重新排队",
+          },
+        });
+        return executeStep(runId, articleId, stepName, stepId, contentHash);
+      }
+      throw new Error("STEP_IN_PROGRESS");
+    }
+    return null;
   }
 
   const startedAt = Date.now();
@@ -583,11 +646,17 @@ async function recoverZombieSteps() {
 }
 
 async function recoverZombieRuns() {
-  const threshold = new Date(Date.now() - ZOMBIE_RUN_THRESHOLD_MS);
+  const runThreshold = new Date(Date.now() - ZOMBIE_RUN_THRESHOLD_MS);
+  const stepThreshold = new Date(Date.now() - ZOMBIE_STEP_THRESHOLD_MS);
+  const now = new Date();
+
   const zombies = await prisma.aiWorkflowRun.findMany({
     where: {
       status: "running",
-      updatedAt: { lt: threshold },
+      OR: [
+        { updatedAt: { lt: runThreshold } },
+        { lockedUntil: { lt: now } },
+      ],
     },
     include: { steps: true },
   });
@@ -597,11 +666,26 @@ async function recoverZombieRuns() {
   console.log(`[zombie-recovery] Found ${zombies.length} zombie runs, recovering...`);
 
   for (const run of zombies) {
-    // Check if any steps are still running (should have been recovered above)
-    const stillRunning = run.steps.some((s) => s.status === "running");
-    if (stillRunning) continue; // Will be handled in next cycle after step recovery
+    const lockExpired = !run.lockedUntil || run.lockedUntil < now;
 
-    const failedSteps = run.steps.filter((s) => s.status === "failed").length;
+    for (const step of run.steps.filter((item) => item.status === "running")) {
+      if (step.updatedAt < stepThreshold || lockExpired) {
+        const nextStatus = step.attempt >= step.maxAttempts ? "failed" : "queued";
+        await prisma.aiWorkflowStep.update({
+          where: { id: step.id },
+          data: {
+            status: nextStatus,
+            error: step.error || "步骤因超时未响应，已自动恢复",
+          },
+        });
+      }
+    }
+
+    const refreshedSteps = await prisma.aiWorkflowStep.findMany({ where: { runId: run.id } });
+    const stillRunning = refreshedSteps.some((item) => item.status === "running");
+    if (stillRunning && !lockExpired) continue;
+
+    const failedSteps = refreshedSteps.filter((item) => item.status === "failed").length;
     const newStatus = failedSteps > 0 ? "failed" : "queued";
 
     await prisma.aiWorkflowRun.update({
@@ -618,7 +702,7 @@ async function recoverZombieRuns() {
       await prisma.article.update({
         where: { id: run.articleId },
         data: {
-          aiStatus: newStatus === "failed" ? "failed" : "queued",
+          aiStatus: newStatus === "failed" ? "failed" : "running",
           aiUpdatedAt: new Date(),
         },
       });
@@ -626,6 +710,103 @@ async function recoverZombieRuns() {
 
     console.log(`[zombie-recovery] Run ${run.id} reset to ${newStatus}`);
   }
+}
+
+async function hasIncompleteSteps(runId: string) {
+  const steps = await prisma.aiWorkflowStep.findMany({
+    where: { runId },
+    select: { status: true },
+  });
+  return steps.some((step) => step.status === "queued" || step.status === "failed" || step.status === "running");
+}
+
+async function getRunProgress(runId: string) {
+  const run = await prisma.aiWorkflowRun.findUnique({
+    where: { id: runId },
+    select: { progress: true },
+  });
+  return run?.progress ?? 0;
+}
+
+async function releaseRunForNextTick(runId: string) {
+  await prisma.aiWorkflowRun.update({
+    where: { id: runId },
+    data: {
+      status: "queued",
+      lockedUntil: null,
+      workerId: null,
+    },
+  });
+}
+
+/** 手动或定时恢复卡住的 running 任务，并返回可继续处理的队列长度 */
+export async function recoverStuckWorkflows() {
+  await recoverZombieSteps();
+  await recoverZombieRuns();
+
+  const now = new Date();
+  const staleRuns = await prisma.aiWorkflowRun.findMany({
+    where: {
+      status: "running",
+      lockedUntil: { lt: now },
+    },
+    select: { id: true, articleId: true },
+  });
+
+  for (const run of staleRuns) {
+    await prisma.aiWorkflowStep.updateMany({
+      where: { runId: run.id, status: "running" },
+      data: {
+        status: "queued",
+        error: "任务锁过期，步骤已重置",
+      },
+    });
+    await releaseRunForNextTick(run.id);
+  }
+
+  const runningArticles = await prisma.article.findMany({
+    where: { aiStatus: "running" },
+    select: { id: true },
+  });
+
+  let resyncedArticles = 0;
+  for (const article of runningArticles) {
+    const activeRun = await prisma.aiWorkflowRun.findFirst({
+      where: {
+        articleId: article.id,
+        status: { in: ["queued", "running"] },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (activeRun) continue;
+
+    const latestRun = await prisma.aiWorkflowRun.findFirst({
+      where: { articleId: article.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const nextStatus = latestRun?.status === "failed"
+      ? "failed"
+      : latestRun?.status === "completed"
+        ? "ready"
+        : "queued";
+
+    await prisma.article.update({
+      where: { id: article.id },
+      data: { aiStatus: nextStatus, aiUpdatedAt: new Date() },
+    });
+    resyncedArticles += 1;
+  }
+
+  const queuedRemaining = await prisma.aiWorkflowRun.count({ where: { status: "queued" } });
+  const runningRuns = await prisma.aiWorkflowRun.count({ where: { status: "running" } });
+
+  return {
+    recoveredRuns: staleRuns.length,
+    resyncedArticles,
+    queuedRemaining,
+    runningRuns,
+  };
 }
 
 // ============================================================================

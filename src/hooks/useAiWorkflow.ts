@@ -30,7 +30,9 @@ export function useAiWorkflow(options: UseAiWorkflowOptions = {}) {
   const [stats, setStats] = useState<AiWorkflowStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [kicking, setKicking] = useState(false)
+  const [recovering, setRecovering] = useState(false)
   const lastKickAt = useRef(0)
+  const lastRecoverAt = useRef(0)
 
   const fetchStats = useCallback(async () => {
     try {
@@ -95,6 +97,21 @@ export function useAiWorkflow(options: UseAiWorkflowOptions = {}) {
     return res.ok
   }, [fetchStats, kickWorker])
 
+  const recoverStuck = useCallback(async () => {
+    setRecovering(true)
+    try {
+      const res = await fetch("/api/admin/ai-workflows/recover", { method: "POST" })
+      const data = await res.json()
+      await fetchStats()
+      if (res.ok) {
+        return { ok: true, message: data.message as string | undefined }
+      }
+      return { ok: false, error: data.error as string | undefined }
+    } finally {
+      setRecovering(false)
+    }
+  }, [fetchStats])
+
   const findLatestRun = useCallback(async (articleId: string) => {
     const res = await fetch(`/api/admin/ai-workflows?articleId=${articleId}`)
     const data = await res.json()
@@ -107,25 +124,34 @@ export function useAiWorkflow(options: UseAiWorkflowOptions = {}) {
     return () => clearInterval(interval)
   }, [fetchStats, pollIntervalMs])
 
-  // Auto-kick: when queue has items and worker isn't busy, nudge processing
+  // Auto-kick queued runs; auto-recover when runs appear stuck (running but no queue)
   useEffect(() => {
-    if (!autoKick || !stats || kicking) return
-    if (stats.queued <= 0) return
-    if (stats.running >= 3) return
+    if (!autoKick || !stats || kicking || recovering) return
 
     const now = Date.now()
+
+    if (stats.queued <= 0 && stats.running > 0) {
+      if (now - lastRecoverAt.current < 60000) return
+      lastRecoverAt.current = now
+      void recoverStuck()
+      return
+    }
+
+    if (stats.queued <= 0) return
     if (now - lastKickAt.current < 15000) return
     lastKickAt.current = now
 
     void kickWorker(Math.min(stats.queued, 3))
-  }, [autoKick, stats, kicking, kickWorker])
+  }, [autoKick, stats, kicking, recovering, kickWorker, recoverStuck])
 
   return {
     stats,
     loading,
     kicking,
+    recovering,
     fetchStats,
     kickWorker,
+    recoverStuck,
     enqueueArticles,
     retryRun,
     findLatestRun,
