@@ -33,9 +33,9 @@ const INTERACTIVE_TASK_PREFIXES = [
 ];
 
 const TIER_MODEL_PATTERNS: Record<AiTaskTier, RegExp[]> = {
-  fast: [/flash/i, /lite/i, /mini/i],
-  standard: [/flash/i, /pro/i, /glm/i, /doubao/i, /minimax/i],
-  quality: [/pro/i, /sonnet/i, /opus/i, /M2\.7/i],
+  fast: [/flash/i, /lite/i, /mini/i, /gemini-[\d.]+-flash/i],
+  standard: [/flash/i, /pro/i, /glm/i, /doubao/i, /minimax/i, /gemini/i],
+  quality: [/pro/i, /sonnet/i, /opus/i, /M2\.7/i, /gemini-[\d.]+-pro/i],
 };
 
 export function resolveTaskTier(taskName: string): AiTaskTier {

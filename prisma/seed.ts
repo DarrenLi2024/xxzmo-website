@@ -74,6 +74,22 @@ async function main() {
       priority: 6,
       enabled: false,
     },
+    {
+      name: "gemini-2.5-flash",
+      label: "Google Gemini 2.5 Flash",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+      model: "gemini-2.5-flash",
+      priority: 4,
+      enabled: true,
+    },
+    {
+      name: "gemini-2.5-pro",
+      label: "Google Gemini 2.5 Pro",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+      model: "gemini-2.5-pro",
+      priority: 7,
+      enabled: false,
+    },
   ];
 
   for (const provider of providers) {

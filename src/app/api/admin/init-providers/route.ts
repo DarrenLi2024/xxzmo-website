@@ -8,6 +8,8 @@ const providers = [
   { name: "zhipu", label: "智谱 GLM", baseUrl: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-plus", priority: 4, enabled: false },
   { name: "volcengine", label: "火山引擎", baseUrl: "https://ark.cn-beijing.volces.com/api/v3", model: "doubao-pro-32k", priority: 5, enabled: false },
   { name: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", model: "anthropic/claude-3.5-sonnet", priority: 6, enabled: false },
+  { name: "gemini-2.5-flash", label: "Google Gemini 2.5 Flash", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-flash", priority: 4, enabled: true },
+  { name: "gemini-2.5-pro", label: "Google Gemini 2.5 Pro", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-pro", priority: 7, enabled: false },
 ];
 
 export async function POST() {

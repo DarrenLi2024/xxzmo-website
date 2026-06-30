@@ -46,6 +46,7 @@ const ALLOWED_DOMAINS = [
   "openai.com",
   "api.mistral.ai",
   "api.anthropic.com",
+  "generativelanguage.googleapis.com",
 ] as const;
 
 function validateBaseUrl(url: string): void {
@@ -196,6 +197,9 @@ function getEnvApiKey(providerName: string): string | undefined {
       return process.env.OPENROUTER_API_KEY;
     case "minimax":
       return process.env.MINIMAX_API_KEY;
+    case "gemini-2.5-flash":
+    case "gemini-2.5-pro":
+      return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     default:
       return process.env[`${providerName.toUpperCase()}_API_KEY`];
   }
@@ -241,6 +245,7 @@ function buildRequestBody(
     stream?: boolean;
     thinking?: { type: "disabled" };
     reasoning_split?: boolean;
+    reasoning_effort?: "none";
   } = {
     model: provider.model,
     messages,
@@ -260,6 +265,11 @@ function buildRequestBody(
   if (provider.model.startsWith("MiniMax-M2")) {
     // Separate model reasoning from final prose used in article workflows.
     body.reasoning_split = true;
+  }
+
+  if (isGeminiFlashModel(provider.model)) {
+    // Workflows expect direct final text/JSON; disable Gemini 2.5 Flash thinking budget.
+    body.reasoning_effort = "none";
   }
 
   return body;
@@ -391,6 +401,10 @@ export async function callLlmStreamDetailed(
   }
 
   throw new Error("流式 LLM 调用失败");
+}
+
+function isGeminiFlashModel(model: string): boolean {
+  return /^gemini-[\d.]+-flash/i.test(model);
 }
 
 function sleep(ms: number): Promise<void> {

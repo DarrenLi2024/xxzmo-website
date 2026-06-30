@@ -146,7 +146,11 @@ export default function AdminApiConfigPage() {
       });
       setProviders((prev) => prev.map((p) => {
         if (p.id === saved.id) return saved;
-        if (editing.name.startsWith("deepseek") && p.name.startsWith("deepseek") && (clearStoredKey || apiKeyDraft.trim())) {
+        if (
+          (editing.name.startsWith("deepseek") && p.name.startsWith("deepseek")
+            || editing.name.startsWith("gemini") && p.name.startsWith("gemini"))
+          && (clearStoredKey || apiKeyDraft.trim())
+        ) {
           return { ...p, hasApiKey: !clearStoredKey };
         }
         return p;
@@ -256,7 +260,7 @@ export default function AdminApiConfigPage() {
                     className="w-full px-2 py-1.5 border border-paper-300 rounded text-sm focus:outline-none focus:border-ink-300"
                   />
                   <div className="flex items-center justify-between mt-1">
-                    <p className="text-xs text-ink-300">数据库存储的 Key 优先级高于环境变量；DeepSeek V4 两个模型共享保存的 Key</p>
+                    <p className="text-xs text-ink-300">数据库存储的 Key 优先级高于环境变量；DeepSeek V4 / Gemini 2.5 同系列模型共享保存的 Key</p>
                     {editing.hasApiKey && (
                       <label className="flex items-center gap-1 text-xs text-ink-400">
                         <input

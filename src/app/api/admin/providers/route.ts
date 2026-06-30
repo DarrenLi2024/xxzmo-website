@@ -43,6 +43,13 @@ export async function PUT(request: NextRequest) {
     });
   }
 
+  if (provider.name.startsWith("gemini") && data.apiKey !== undefined) {
+    await prisma.llmProvider.updateMany({
+      where: { name: { startsWith: "gemini" }, id: { not: id } },
+      data: { apiKey: data.apiKey },
+    });
+  }
+
   await logAdminAction({
     action: "provider.update",
     entityType: "llmProvider",
