@@ -25,7 +25,15 @@ const BUDGET: Record<
 export function estimateMaxTokens(inputLength: number, kind: TokenBudgetKind): number {
   const cfg = BUDGET[kind];
   const chars = Math.max(0, inputLength);
-  const estimated = Math.ceil(cfg.base + chars * cfg.perChar);
+  let estimated = Math.ceil(cfg.base + chars * cfg.perChar);
+
+  if (chars < 400 && (kind === "json-parse" || kind === "json-jigu" || kind === "json-assist")) {
+    estimated = Math.min(estimated, Math.max(cfg.min, Math.ceil(640 + chars * 1.4)));
+  }
+  if (chars < 200) {
+    estimated = Math.min(estimated, 2048);
+  }
+
   return Math.min(cfg.max, Math.max(cfg.min, estimated));
 }
 

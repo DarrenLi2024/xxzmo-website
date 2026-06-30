@@ -7,9 +7,8 @@ interface Props {
   params: Promise<{ source: string; slug: string }>;
 }
 
-// 动态渲染，避免构建时连接数据库
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+// 30 秒 ISR 缓存
+export const revalidate = 30;
 export const dynamicParams = true;
 
 async function getArticle(source: string, slug: string) {

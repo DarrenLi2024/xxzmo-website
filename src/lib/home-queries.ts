@@ -193,7 +193,7 @@ function serializeHeroArticle(a: any): HeroArticle {
   const painting = serializeLocalPainting(a.painting);
   return {
     id: a.id, slug: a.slug, title: a.title, author: a.author, source: a.source,
-    type: a.type, body: a.body, createdAt: a.createdAt, publishedAt: a.publishedAt,
+    type: a.type, body: excerptBody(a.body, 120), createdAt: a.createdAt, publishedAt: a.publishedAt,
     status: a.status,
     tags: a.tags.map((t: any) => t.tag.name),
     painting,
@@ -204,7 +204,7 @@ function serializeFeaturedArticle(a: any): FeaturedArticle {
   const painting = serializeLocalPainting(a.painting);
   return {
     id: a.id, slug: a.slug, title: a.title, author: a.author, source: a.source,
-    type: a.type, body: a.body,
+    type: a.type, body: excerptBody(a.body, 80),
     tags: a.tags.map((t: any) => t.tag.name),
     painting,
   };
@@ -214,10 +214,15 @@ function serializeTopicArticle(a: any): TopicArticle {
   const painting = serializeLocalPainting(a.painting);
   return {
     id: a.id, slug: a.slug, title: a.title, source: a.source,
-    type: a.type, body: a.body, createdAt: a.createdAt,
+    type: a.type, body: excerptBody(a.body, 80), createdAt: a.createdAt,
     tags: a.tags.map((t: any) => t.tag.name),
     painting,
   };
+}
+
+function excerptBody(body: string, maxLen: number): string {
+  const normalized = body.replace(/\s+/g, " ").trim();
+  return normalized.length <= maxLen ? normalized : `${normalized.slice(0, maxLen)}…`;
 }
 
 function serializeLocalPainting(painting: any) {

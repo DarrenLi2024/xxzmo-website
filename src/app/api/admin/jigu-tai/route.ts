@@ -85,20 +85,27 @@ async function searchWikisource(title: string): Promise<SourceCandidate[]> {
   const data = await res.json();
   const titles: string[] = data?.[1] || [];
   const urls: string[] = data?.[3] || [];
-  const results: SourceCandidate[] = [];
 
-  for (let i = 0; i < titles.length; i++) {
-    const body = await wikiExtract(titles[i]);
-    if (!body || body.length < 20) continue;
-    results.push({
-      id: `wiki-${i}`, title: titles[i],
-      url: `${urls[i] || `https://zh.wikisource.org/wiki/${encodeURIComponent(titles[i])}`}?variant=zh-hans`,
-      source: "wikisource", label: "维基文库",
-      excerpt: body.slice(0, 240), body: cleanWiki(body),
-      confidence: matchConf(title, titles[i], 0.78), script: "zh-Hans",
-    });
-  }
-  return results;
+  const extracted = await Promise.all(
+    titles.map(async (wikiTitle, i) => {
+      const body = await wikiExtract(wikiTitle);
+      if (!body || body.length < 20) return null;
+      const candidate: SourceCandidate = {
+        id: `wiki-${i}`,
+        title: wikiTitle,
+        url: `${urls[i] || `https://zh.wikisource.org/wiki/${encodeURIComponent(wikiTitle)}`}?variant=zh-hans`,
+        source: "wikisource",
+        label: "维基文库",
+        excerpt: body.slice(0, 240),
+        body: cleanWiki(body),
+        confidence: matchConf(title, wikiTitle, 0.78),
+        script: "zh-Hans",
+      };
+      return candidate;
+    })
+  );
+
+  return extracted.filter((item): item is SourceCandidate => item !== null);
 }
 
 async function wikiExtract(t: string) {

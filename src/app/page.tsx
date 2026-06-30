@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getHomeStats, getHeroArticle, getFeaturedArticles, getTopicGroups } from "@/lib/home-queries";
+import { getOrCreateDailyQuote } from "@/lib/daily-quote-server";
 import { BlogHero } from "@/components/home/BlogHero";
 import { BlogFeed } from "@/components/home/BlogFeed";
 import { BlogTopicGarden } from "@/components/home/BlogTopicGarden";
@@ -10,11 +11,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 export const revalidate = 30;
 
 export default async function HomePage() {
-  const [stats, hero, featured, groups] = await Promise.all([
+  const [stats, hero, featured, groups, dailyQuote] = await Promise.all([
     getHomeStats(),
     getHeroArticle(),
     getFeaturedArticles(),
     getTopicGroups(),
+    getOrCreateDailyQuote(),
   ]);
 
   const filteredFeatured = hero
@@ -47,7 +49,7 @@ export default async function HomePage() {
 
         {/* 每日一句 — 底部收束 */}
         <Suspense fallback={<Skeleton className="h-24 w-full rounded-xl" />}>
-          <DailyQuoteSection />
+          <DailyQuoteSection quote={dailyQuote} />
         </Suspense>
       </div>
     </div>

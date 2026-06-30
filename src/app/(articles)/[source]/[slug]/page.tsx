@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { ArticleDetail } from "@/components/article/ArticleDetail";
 import { TagBar } from "@/components/article/TagBar";
 import { LikeBar } from "@/components/article/LikeBar";
+import { getStoredArticlePinyin } from "@/lib/article-pinyin-server";
 
 interface Props {
   params: Promise<{ source: string; slug: string }>;
@@ -97,6 +98,12 @@ export default async function ArticleDetailPage({ params }: Props) {
   }
 
   const adjacent = await getAdjacentArticles(source, decodedSlug, article.createdAt);
+  const initialPinyin = getStoredArticlePinyin({
+    title: article.title,
+    author: article.author,
+    body: article.body,
+    pinyin: article.pinyin,
+  });
 
   const annotations = parseAnnotations(article.annotations);
 
@@ -125,11 +132,12 @@ export default async function ArticleDetailPage({ params }: Props) {
           translation={article.translation}
           appreciation={article.appreciation}
           pdfHref={`/${article.source}/${article.slug}/pdf`}
+          initialPinyinBodyMap={initialPinyin?.bodyMap}
         />
 
       <div className="article-actions flex items-center justify-between mt-10 pt-6 border-t border-paper-200">
         <TagBar tags={tags} />
-        <LikeBar slug={article.slug} />
+        <LikeBar slug={article.slug} initialCount={article.likeCount ?? 0} />
       </div>
 
       {painting && (
@@ -143,7 +151,7 @@ export default async function ArticleDetailPage({ params }: Props) {
                 sizes="(max-width: 768px) 100vw, 800px"
                 className="object-cover"
                 style={{ objectPosition: "50% 30%" }}
-                priority
+                loading="lazy"
               />
             </div>
             <figcaption className="text-xs text-ink-400 mt-2 text-center">

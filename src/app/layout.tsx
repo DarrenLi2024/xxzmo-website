@@ -1,18 +1,8 @@
 import type { Metadata } from "next";
-import { Inter, Noto_Serif_SC, Geist } from "next/font/google";
+import { Noto_Serif_SC } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
-import { QueryProvider } from "@/components/providers/QueryProvider";
-
-const geist = Geist({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
-
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-inter",
-  display: "swap",
-});
 
 const notoSerifSC = Noto_Serif_SC({
   subsets: ["latin"],
@@ -48,15 +38,13 @@ export default function RootLayout({
     <html
       lang="zh-CN"
       data-scroll-behavior="smooth"
-      className={`${inter.variable} ${notoSerifSC.variable} ${geist.variable} font-sans`}
+      className={`${notoSerifSC.variable} font-serif`}
       suppressHydrationWarning
     >
       <body className="min-h-screen flex flex-col">
-        <QueryProvider>
-          <Header />
-          <main className="flex-1">{children}</main>
-          <Footer />
-        </QueryProvider>
+        <Header />
+        <main className="flex-1">{children}</main>
+        <Footer />
       </body>
     </html>
   );

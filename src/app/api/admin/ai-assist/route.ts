@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { runAiTask } from "@/lib/ai-task";
 import { articleAssistSchema } from "@/lib/ai-schemas";
 import { ARTICLE_ASSIST_PROMPT_VERSION, buildArticleAssistMessages } from "@/lib/prompts";
@@ -11,11 +10,6 @@ export async function POST(request: Request) {
 
     if (!title || !body) {
       return NextResponse.json({ error: "请提供标题和正文" }, { status: 400 });
-    }
-
-    const providers = await prisma.llmProvider.count({ where: { enabled: true } });
-    if (providers === 0) {
-      return NextResponse.json({ error: "未配置可用的 LLM Provider" }, { status: 400 });
     }
 
     const result = await runAiTask(

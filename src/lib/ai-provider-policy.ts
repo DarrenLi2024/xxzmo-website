@@ -33,9 +33,9 @@ const INTERACTIVE_TASK_PREFIXES = [
 ];
 
 const TIER_MODEL_PATTERNS: Record<AiTaskTier, RegExp[]> = {
-  fast: [/flash/i, /lite/i, /mini/i, /gemini-[\d.]+-flash/i],
-  standard: [/flash/i, /pro/i, /glm/i, /doubao/i, /minimax/i, /gemini/i],
-  quality: [/pro/i, /sonnet/i, /opus/i, /M2\.7/i, /gemini-[\d.]+-pro/i],
+  fast: [/gemini-[\d.]+-flash/i, /flash/i, /lite/i, /mini/i],
+  standard: [/gemini-[\d.]+-flash/i, /gemini/i, /flash/i, /pro/i, /glm/i, /doubao/i, /minimax/i],
+  quality: [/gemini-[\d.]+-pro/i, /pro/i, /sonnet/i, /opus/i, /M2\.7/i],
 };
 
 export function resolveTaskTier(taskName: string): AiTaskTier {
@@ -57,7 +57,7 @@ export function getLlmOptionsForTier(tier: AiTaskTier): Pick<LlmCallOptions, "ma
     case "fast":
       return { maxProviders: 1, preferModelPatterns: TIER_MODEL_PATTERNS.fast };
     case "quality":
-      return { maxProviders: 2, preferModelPatterns: TIER_MODEL_PATTERNS.quality };
+      return { maxProviders: 1, preferModelPatterns: TIER_MODEL_PATTERNS.quality };
     default:
       return { maxProviders: 1, preferModelPatterns: TIER_MODEL_PATTERNS.standard };
   }
@@ -70,10 +70,12 @@ export function resolveLlmOptionsForTask(
   const tier = resolveTaskTier(taskName);
   const tierOptions = getLlmOptionsForTier(tier);
   const interactive = isInteractiveTask(taskName);
+  const batch = taskName.includes(".batch");
 
   return {
     ...tierOptions,
     ...(interactive ? { maxProviders: 1, maxRetries: 1 } : {}),
+    ...(batch ? { maxProviders: 1, maxRetries: 1 } : {}),
     ...overrides,
   };
 }

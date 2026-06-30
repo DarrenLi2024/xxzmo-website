@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logAdminAction } from "@/lib/admin-log";
+import { invalidateLlmProviderCache } from "@/lib/llm-service";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -49,6 +50,8 @@ export async function PUT(request: NextRequest) {
       data: { apiKey: data.apiKey },
     });
   }
+
+  invalidateLlmProviderCache();
 
   await logAdminAction({
     action: "provider.update",

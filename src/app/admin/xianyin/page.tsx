@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Upload, Loader2, FileText, Tag, Trash2, Sparkles, Copy, RefreshCw, ExternalLink, ChevronLeft, ChevronRight, PanelLeftClose, PanelRightClose } from "lucide-react";
 import { useToast } from "@/components/admin/Toast";
 import { consumeOpenAiSseStream } from "@/lib/sse-client";
+import { runWithConcurrency } from "@/lib/concurrency";
 
 // ============================================================
 // 类型定义
@@ -135,18 +136,18 @@ export default function XianyinPage() {
           chunks.push(clean.slice(i, Math.min(i + CHUNK, clean.length)));
         }
 
-        const allArticles: ParsedArticle[] = [];
-        for (let i = 0; i < chunks.length; i++) {
+        const chunkResults = await runWithConcurrency(chunks, 3, async (chunk, i) => {
           const res = await fetch("/api/admin/xianyin/ai-parse", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: chunks[i], chunkIndex: i, totalChunks: chunks.length }),
+            body: JSON.stringify({ text: chunk, chunkIndex: i, totalChunks: chunks.length }),
           });
-          if (res.ok) {
-            const data = await res.json();
-            allArticles.push(...(data.articles || []));
-          }
-        }
+          if (!res.ok) return [] as ParsedArticle[];
+          const data = await res.json();
+          return (data.articles || []) as ParsedArticle[];
+        });
+
+        const allArticles = chunkResults.flat();
 
         // 去重
         const seen = new Set<string>();

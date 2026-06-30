@@ -60,7 +60,7 @@ export async function runAiTask<T>(
 
     const parsed = parseJsonObject(rawOutput);
     const data = schema.parse(parsed);
-    const logId = await writeAiTaskLog({
+    const logId = scheduleAiTaskLog({
       taskName,
       promptVersion: options.promptVersion,
       providerName,
@@ -82,7 +82,7 @@ export async function runAiTask<T>(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await writeAiTaskLog({
+    scheduleAiTaskLog({
       taskName,
       promptVersion: options.promptVersion,
       providerName,
@@ -121,7 +121,7 @@ export async function runAiTextTask(
     providerName = llmResult.providerName;
     providerModel = llmResult.providerModel;
 
-    const logId = await writeAiTaskLog({
+    const logId = scheduleAiTaskLog({
       taskName,
       promptVersion: options.promptVersion,
       providerName,
@@ -143,7 +143,7 @@ export async function runAiTextTask(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await writeAiTaskLog({
+    scheduleAiTaskLog({
       taskName,
       promptVersion: options.promptVersion,
       providerName,
@@ -192,7 +192,7 @@ export async function runAiTextTaskStream(
     providerName = llmResult.providerName;
     providerModel = llmResult.providerModel;
 
-    const logId = await writeAiTaskLog({
+    const logId = scheduleAiTaskLog({
       taskName,
       promptVersion: options.promptVersion,
       providerName,
@@ -214,7 +214,7 @@ export async function runAiTextTaskStream(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await writeAiTaskLog({
+    scheduleAiTaskLog({
       taskName,
       promptVersion: options.promptVersion,
       providerName,
@@ -325,6 +325,11 @@ async function writeAiTaskLog(data: {
     console.warn("[ai-task] failed to write task log", error);
     return null;
   }
+}
+
+function scheduleAiTaskLog(data: Parameters<typeof writeAiTaskLog>[0]): string | null {
+  void writeAiTaskLog(data);
+  return null;
 }
 
 function preview(raw: string) {

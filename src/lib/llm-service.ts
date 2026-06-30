@@ -277,14 +277,33 @@ function buildRequestBody(
 
 async function getSortedProviders(options: LlmCallOptions) {
   const { maxProviders, preferModelPatterns } = options;
-  const availableProviders = await prisma.llmProvider.findMany({
-    where: { enabled: true },
-    orderBy: { priority: "asc" },
-  });
+  const availableProviders = await getCachedEnabledProviders();
   const sortedProviders = sortProvidersByPreference(availableProviders, preferModelPatterns);
   return maxProviders === undefined
     ? sortedProviders
     : sortedProviders.slice(0, maxProviders);
+}
+
+const PROVIDER_CACHE_TTL_MS = 60_000;
+let cachedProviders: Awaited<ReturnType<typeof prisma.llmProvider.findMany>> | null = null;
+let cachedProvidersAt = 0;
+
+async function getCachedEnabledProviders() {
+  const now = Date.now();
+  if (cachedProviders && now - cachedProvidersAt < PROVIDER_CACHE_TTL_MS) {
+    return cachedProviders;
+  }
+  cachedProviders = await prisma.llmProvider.findMany({
+    where: { enabled: true },
+    orderBy: { priority: "asc" },
+  });
+  cachedProvidersAt = now;
+  return cachedProviders;
+}
+
+export function invalidateLlmProviderCache() {
+  cachedProviders = null;
+  cachedProvidersAt = 0;
 }
 
 export interface LlmStreamHandlers {

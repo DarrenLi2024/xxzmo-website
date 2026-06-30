@@ -28,6 +28,7 @@ interface ArticleDetailProps {
   translation?: string | null;
   appreciation?: string | null;
   pdfHref?: string;
+  initialPinyinBodyMap?: PinyinMapItem[];
 }
 
 type ScriptMode = "original" | "simplified" | "traditional";
@@ -68,10 +69,11 @@ export function ArticleDetail({
   translation,
   appreciation,
   pdfHref,
+  initialPinyinBodyMap,
 }: ArticleDetailProps) {
   const [showPinyin, setShowPinyin] = useState(false);
-  const [pinyinData, setPinyinData] = useState<PinyinMapItem[]>([]);
-  const [hasPinyin, setHasPinyin] = useState(false);
+  const [pinyinData, setPinyinData] = useState<PinyinMapItem[]>(initialPinyinBodyMap || []);
+  const [hasPinyin, setHasPinyin] = useState(Boolean(initialPinyinBodyMap?.length));
   const [scriptMode, setScriptMode] = useState<ScriptMode>("original");
   const [scriptConverter, setScriptConverter] = useState<ConverterFunction | null>(null);
   const [isScriptConverting, setIsScriptConverting] = useState(false);
@@ -88,6 +90,8 @@ export function ArticleDetail({
   }, [showPinyin]);
 
   useEffect(() => {
+    if (initialPinyinBodyMap?.length) return;
+
     const load = async () => {
       try {
         let data = await fetchJson<any>(`/api/articles/pinyin?articleId=${articleId}`);
@@ -102,7 +106,7 @@ export function ArticleDetail({
       } catch {}
     };
     load();
-  }, [articleId]);
+  }, [articleId, initialPinyinBodyMap]);
 
   function convertText(text?: string | null) {
     if (!text || scriptMode === "original" || !scriptConverter) return text;

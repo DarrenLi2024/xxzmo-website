@@ -4,6 +4,9 @@ import { runAiTask } from "@/lib/ai-task";
 import { articleAssistSchema } from "@/lib/ai-schemas";
 import { ARTICLE_ASSIST_PROMPT_VERSION, buildArticleAssistMessages } from "@/lib/prompts";
 import { estimateMaxTokensFromParts } from "@/lib/ai-token-budget";
+import { runWithConcurrency } from "@/lib/concurrency";
+
+const BATCH_CONCURRENCY = 3;
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,11 +14,6 @@ export async function POST(request: NextRequest) {
 
     if (!Array.isArray(articleIds) || articleIds.length === 0) {
       return NextResponse.json({ error: "缺少文章ID列表" }, { status: 400 });
-    }
-
-    const providerCount = await prisma.llmProvider.count({ where: { enabled: true } });
-    if (providerCount === 0) {
-      return NextResponse.json({ error: "未配置可用的 LLM Provider" }, { status: 400 });
     }
 
     const results = {
@@ -26,14 +24,14 @@ export async function POST(request: NextRequest) {
       errors: [] as string[],
     };
 
-    for (const articleId of articleIds) {
+    await runWithConcurrency(articleIds as string[], BATCH_CONCURRENCY, async (articleId) => {
       try {
         const article = await prisma.article.findUnique({ where: { id: articleId } });
         if (!article) {
           results.failed++;
           results.items.push({ articleId, status: "failed", reason: "文章不存在" });
           results.errors.push(`文章不存在: ${articleId}`);
-          continue;
+          return;
         }
 
         const aiResult = await runAiTask(
@@ -74,7 +72,7 @@ export async function POST(request: NextRequest) {
           .filter((t): t is string => typeof t === "string" && t.trim().length > 0);
         if (cleanTags.length > 0) {
           updateData.tagList = JSON.stringify(cleanTags);
-          for (const tagName of cleanTags) {
+          await Promise.all(cleanTags.map(async (tagName) => {
             const tag = await prisma.tag.upsert({
               where: { name: tagName },
               update: {},
@@ -85,7 +83,7 @@ export async function POST(request: NextRequest) {
               update: {},
               create: { articleId, tagId: tag.id },
             });
-          }
+          }));
         }
 
         await prisma.article.update({ where: { id: articleId }, data: updateData });
@@ -97,7 +95,7 @@ export async function POST(request: NextRequest) {
         results.items.push({ articleId, status: "failed", reason: message });
         results.errors.push(`${message}: ${articleId}`);
       }
-    }
+    });
 
     return NextResponse.json(results);
   } catch (error) {

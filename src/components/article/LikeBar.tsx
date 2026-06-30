@@ -7,15 +7,18 @@ import { cn } from "@/lib/utils";
 interface Props {
   slug: string;
   className?: string;
+  initialCount?: number;
 }
 
-export function LikeBar({ slug, className }: Props) {
+export function LikeBar({ slug, className, initialCount = 0 }: Props) {
   const [liked, setLiked] = useState(false);
-  const [count, setCount] = useState(0);
+  const [count, setCount] = useState(initialCount);
   const [animating, setAnimating] = useState(false);
 
   useEffect(() => {
     setLiked(localStorage.getItem(`like:${slug}`) === "1");
+
+    if (initialCount > 0) return;
 
     fetch(`/api/like?slug=${encodeURIComponent(slug)}`)
       .then((r) => r.json())
@@ -25,7 +28,7 @@ export function LikeBar({ slug, className }: Props) {
       .catch((error) => {
         console.error("[LikeBar] 获取点赞数失败:", error);
       });
-  }, [slug]);
+  }, [slug, initialCount]);
 
   const toggle = useCallback(async () => {
     const next = !liked;

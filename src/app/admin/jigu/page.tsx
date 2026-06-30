@@ -1,7 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
 
-import { AdminArticleList } from "@/components/admin/AdminArticleList";
+const AdminArticleList = dynamic(
+  () => import("@/components/admin/AdminArticleList").then((mod) => mod.AdminArticleList),
+  {
+    loading: () => <div className="py-12 text-center text-ink-400 text-sm">加载列表...</div>,
+  }
+);
 
 export default function AdminJiguPage() {
   return (
