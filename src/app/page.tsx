@@ -11,13 +11,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 export const revalidate = 30;
 
 export default async function HomePage() {
-  const [stats, hero, featured, groups, dailyQuote] = await Promise.all([
+  const [stats, hero, featured, groups] = await Promise.all([
     getHomeStats(),
     getHeroArticle(),
     getFeaturedArticles(),
     getTopicGroups(),
-    getOrCreateDailyQuote(),
   ]);
+  const dailyQuote = await getOrCreateDailyQuote();
 
   const filteredFeatured = hero
     ? featured.filter(a => a.id !== hero.id).slice(0, 4)
